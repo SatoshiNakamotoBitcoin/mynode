@@ -40,6 +40,21 @@ def update_price_info():
             price_json_string = subprocess.check_output("torify curl https://api.coindesk.com/v1/bpi/currentprice.json", shell=True)
             data = json.loads(price_json_string)
             price = data["bpi"]["USD"]["rate_float"]
+            
+     if get_ui_setting("price_ticker"):
+        price = "N/A"
+        try:
+            price_json_string = subprocess.check_output("torify curl https://api.coindesk.com/v1/bpi/currentprice.json", shell=True)
+            data = json.loads(price_json_string)
+            price = data["bpi"]["EUR"]["rate_float"]
+            
+      if get_ui_setting("price_ticker"):
+        price = "N/A"
+        try:
+            price_json_string = subprocess.check_output("torify curl https://api.coindesk.com/v1/bpi/currentprice.json", shell=True)
+            data = json.loads(price_json_string)
+            price = data["bpi"]["JPY"]["rate_float"]
+
 
         except Exception as e:
             log_message("update_price_info EXCEPTION: {}".format(str(e)))
