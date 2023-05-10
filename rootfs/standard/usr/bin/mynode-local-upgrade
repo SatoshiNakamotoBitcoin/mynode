@@ -26,23 +26,30 @@ mkdir -p /var/log/nginx
 rm -f mynode_rootfs_${DEVICE_TYPE}.tar.gz
 wget http://${ip_address}:8000/mynode_rootfs_${DEVICE_TYPE}.tar.gz -O /tmp/mynode_rootfs_${DEVICE_TYPE}.tar.gz --progress=bar
 
-# Extract on top of mynode fs
+# Extract to temp location
 rm -rf /tmp/rootfs/
 mkdir -p /tmp/rootfs/
 echo -n "Extracting rootfs TAR for ${DEVICE_TYPE}... "
 tar -xf /tmp/mynode_rootfs_${DEVICE_TYPE}.tar.gz -C /tmp/rootfs/
 echo Done!
 
+# Clear files before installing/overwriting new ones
+rm -rf /var/www/mynode/static/images/screenshots
+for d in /usr/share/mynode_apps/*/screenshots ; do
+    rm -rf "$d"
+done
+
 # Install files
 rsync -r -K /tmp/rootfs/out/rootfs_${DEVICE_TYPE}/* /
 
-# Update systemd service config
-systemctl daemon-reload
 
 # Sleep and sync FS
 echo "Syncing filesystem..."
 sleep 1
 sync
+
+# Init Dynamic Apps
+mynode-manage-apps init || true
 
 # Reload systemd files
 systemctl daemon-reload
@@ -56,6 +63,9 @@ if [ "$#" -ge 2 ]; then
     elif [ "$2" = "mempool" ]; then
         echo "Restarting mempool service..."
         systemctl restart mempool &
+    elif [ "$2" = "docker_images" ]; then
+        echo "Restarting docker_images..."
+        systemctl restart docker_images &
     elif [ "$2" = "files" ]; then
         echo "Only updating files... Done."
     elif [ "$2" = "reboot" ]; then

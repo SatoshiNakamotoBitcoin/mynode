@@ -50,18 +50,25 @@ while true; do
 
     # Upgrade Netdata
     echo "Checking for new netdata..."
-    CURRENT=""
-    if [ -f $NETDATA_VERSION_FILE ]; then
-        CURRENT=$(cat $NETDATA_VERSION_FILE)
+    enabled=$(systemctl is-enabled netdata)
+    if [ "$enabled" = "enabled" ]; then
+        touch /mnt/hdd/mynode/settings/install_netdata
+        sync
     fi
-    if [ "$CURRENT" != "$NETDATA_VERSION" ]; then
-        docker rmi $(docker images --format '{{.Repository}}:{{.Tag}}' | grep 'netdata') || true
+    if should_install_app "netdata" ; then
+        CURRENT=""
+        if [ -f $NETDATA_VERSION_FILE ]; then
+            CURRENT=$(cat $NETDATA_VERSION_FILE)
+        fi
+        if [ "$CURRENT" != "$NETDATA_VERSION" ]; then
+            docker rmi $(docker images --format '{{.Repository}}:{{.Tag}}' | grep 'netdata') || true
 
-        docker pull netdata/netdata:${NETDATA_VERSION}
+            docker pull netdata/netdata:${NETDATA_VERSION}
 
-        echo $NETDATA_VERSION > $NETDATA_VERSION_FILE
+            echo $NETDATA_VERSION > $NETDATA_VERSION_FILE
+        fi
+        touch /tmp/need_application_refresh
     fi
-    touch /tmp/need_application_refresh
     
 
     # Upgrade WebSSH2
@@ -128,17 +135,82 @@ while true; do
     touch /tmp/need_application_refresh
 
 
-    # Upgrade BTCPay Server (docker compose does install, just need version file update)
+    # Upgrade BTCPay Server
     if should_install_app "btcpayserver" ; then
         CURRENT=""
         if [ -f $BTCPAYSERVER_VERSION_FILE ]; then
             CURRENT=$(cat $BTCPAYSERVER_VERSION_FILE)
         fi
         if [ "$CURRENT" != "$BTCPAYSERVER_VERSION" ]; then
+            # Create a folder for BTCPay
+            rm -rf sudo /mnt/hdd/mynode/btcpayserver
+            mkdir -p /mnt/hdd/mynode/btcpayserver
+            cd /mnt/hdd/mynode/btcpayserver
+
+            # Clone this repository
+            git clone https://github.com/btcpayserver/btcpayserver-docker
+            #git clone https://github.com/tehelsper/btcpayserver-docker.git
+            cd btcpayserver-docker
+
+            # Run btcpay-setup.sh with the right parameters
+            export BTCPAY_HOST="mynode.local"
+            export NBITCOIN_NETWORK="mainnet"
+            export BTCPAYGEN_CRYPTO1="btc"
+            export BTCPAYGEN_ADDITIONAL_FRAGMENTS="btcpayserver-noreverseproxy;bitcoin.custom;lnd.custom"
+            export BTCPAYGEN_EXCLUDE_FRAGMENTS="opt-add-tor;bitcoin;bitcoin-lnd;"
+            export BTCPAYGEN_REVERSEPROXY="none"
+            export NOREVERSEPROXY_HTTP_PORT=49392
+            export REVERSEPROXY_HTTP_PORT=49392
+            export REMOTE_BTC_RPC_USERNAME="mynode"
+            BTCRPCPW=$(cat /mnt/hdd/mynode/settings/.btcrpcpw)
+            export REMOTE_BTC_RPC_PASSWORD="$BTCRPCPW"
+            export BTCPAYGEN_LIGHTNING="lnd"
+            export BTCPAY_ENABLE_SSH=false
+            export BTCPAY_IMAGE=btcpayserver/btcpayserver:$BTCPAYSERVER_VERSION
+
+            cp -f /usr/share/btcpayserver/bitcoin.custom.yml /mnt/hdd/mynode/btcpayserver/btcpayserver-docker/docker-compose-generator/docker-fragments/bitcoin.custom.yml
+            cp -f /usr/share/btcpayserver/lnd.custom.yml /mnt/hdd/mynode/btcpayserver/btcpayserver-docker/docker-compose-generator/docker-fragments/lnd.custom.yml
+
+            rm -rf /usr/local/bin/btcpay-*
+            rm -rf /usr/local/bin/changedomain.sh
+
+            #. ./btcpay-setup.sh # Install and run
+            bash -c ". ./btcpay-setup.sh --install-only --no-startup-register --no-systemd-reload"
+
             echo $BTCPAYSERVER_VERSION > $BTCPAYSERVER_VERSION_FILE
         fi
     fi
     touch /tmp/need_application_refresh
+
+
+    # Upgrade LNBits
+    if should_install_app "lnbits" ; then
+        LNBITS_UPGRADE_URL=https://github.com/lnbits/lnbits/archive/$LNBITS_VERSION.tar.gz
+        CURRENT=""
+        if [ -f $LNBITS_VERSION_FILE ]; then
+            CURRENT=$(cat $LNBITS_VERSION_FILE)
+        fi
+        if [ "$CURRENT" != "$LNBITS_VERSION" ]; then
+            docker rmi $(docker images --format '{{.Repository}}:{{.Tag}}' | grep 'lnbits') || true
+
+            cd /opt/mynode
+            rm -rf lnbits
+            sudo -u bitcoin wget $LNBITS_UPGRADE_URL -O lnbits.tar.gz
+            sudo -u bitcoin tar -xvf lnbits.tar.gz
+            sudo -u bitcoin rm lnbits.tar.gz
+            sudo -u bitcoin mv lnbits-* lnbits
+            cd lnbits
+
+            # Copy over config file
+            cp /usr/share/mynode/lnbits.env /opt/mynode/lnbits/.env
+            chown bitcoin:bitcoin /opt/mynode/lnbits/.env
+
+            # Build lnbits docker container
+            docker build -t lnbits-legend .
+
+            echo $LNBITS_VERSION > $LNBITS_VERSION_FILE
+        fi
+    fi
 
 
     # Install Dojo
@@ -184,7 +256,9 @@ while true; do
 
                 # Fix for v1.12.1 (may need to remove later)
                 docker rmi node:14-alpine || true
-                sed -i "s/node:14-alpine.*/node:14-alpine3.12/g" /mnt/hdd/mynode/dojo/docker/my-dojo/node/Dockerfile
+                if [ "$IS_32_BIT" = "1" ]; then
+                    sed -i "s/node:14-alpine.*/node:14-alpine3.12/g" /mnt/hdd/mynode/dojo/docker/my-dojo/node/Dockerfile
+                fi
 
                 # Run Dojo Install or Upgrade
                 cd /mnt/hdd/mynode/dojo/docker/my-dojo
@@ -198,7 +272,7 @@ while true; do
                 fi
 
                 #Check for install/upgrade to finish to initialize Dojo mysql db
-                sudo /usr/bin/mynode_post_dojo.sh
+                sudo /usr/bin/service_scripts/post_dojo.sh
 
                 # Wait for install script to finish
                 wait $INSTALL_PID || MARK_DOJO_COMPLETE=0

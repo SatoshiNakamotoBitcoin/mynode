@@ -9,14 +9,14 @@ After=bitcoin.service
 [Service]
 ExecStartPre=/usr/bin/is_not_shutting_down.sh
 ExecStartPre=/usr/bin/wait_on_lnd.sh
-ExecStartPre=+/usr/bin/mynode_pre_rtl.sh
+ExecStartPre=+/usr/bin/service_scripts/pre_rtl.sh
 WorkingDirectory=/opt/mynode/RTL
 ExecStart=/usr/bin/node rtl
 
 User=bitcoin
 Group=bitcoin
 Type=simple
-TimeoutSec=240
+TimeoutSec=120
 Restart=always
 RestartSec=60
 StandardOutput=syslog

@@ -3,8 +3,20 @@
 1. Setup Base OS
 
    Install latest Debian Net-install via CD
+   
+   **LATEST TESTED IMAGE (10.11)** <br/>
+   Basic: https://cdimage.debian.org/mirror/cdimage/archive/10.11.0/amd64/iso-cd/ <br/>
+   Additional Firmware: https://cdimage.debian.org/mirror/cdimage/unofficial/non-free/cd-including-firmware/archive/10.11.0+nonfree/amd64/iso-cd/ <br/>
+   
+   **MOST RECENT DEBIAN IMAGES (not tested)** <br/>
+   Basic: [https://www.debian.org/CD/netinst/](https://www.debian.org/CD/netinst/) <br/>
+   
+   If VM, set VM Settings:
+     - Set Ethernet adapter to Bridged Mode
 
-   URL: [https://www.debian.org/CD/netinst/](https://www.debian.org/CD/netinst/)
+   If PC, set PC / UEFI Settings:
+     - Use Debian Image with Firmware
+     - Disable Secure Boot
 
    Follow instructions:
 
@@ -17,7 +29,7 @@
      - Username: mynode
      - Password: bolt
      - Timezone: Central
-     - Partition: Guided Use Entire Disk, Continue, Continue, Continue, Yes
+     - Partition: Manual, One ext4 Partition, No Swap
      - CDs and Packages: No, Next, Next
      - Software Selection: No GUI, No Print Server, Add SSH Server
      - Install Grub: Yes, /dev/sda
@@ -66,6 +78,7 @@
 
    ```sh
    sync
+   sudo shutdown -h now
    ```
 
 10. Make image now (if imaging)

@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, session, abort, Markup, request, r
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from pprint import pprint, pformat
 from device_info import *
+from application_info import *
 from user_management import check_logged_in
 import os
 import json
@@ -33,6 +34,19 @@ def create_v3_service(name, url, port, show_link, guide, force_https=False):
     service["guide"] = guide
     return service
 
+def add_dynamic_app_v3_services(v3_services):
+    show_link = True
+    guide = ""
+    app_names = get_dynamic_app_names()
+    for short_name in app_names:
+        app = get_application(short_name)
+        if app["is_installed"]:
+            onion_url = get_onion_url_for_service(short_name)
+            if "http_port" in app and app["http_port"] != None:
+                v3_services.append(create_v3_service(app["name"] + " (HTTP)", onion_url, "80", show_link, guide, force_https=False))
+            if "https_port" in app and app["https_port"] != None:
+                v3_services.append(create_v3_service(app["name"] + " (HTTPS)", onion_url, "443", show_link, guide, force_https=True))
+
 ### Page functions
 @mynode_tor.route("/tor")
 def page_tor():
@@ -52,6 +66,7 @@ def page_tor():
     electrs_onion_url = get_onion_url_electrs()
     btcpay_onion_url = get_onion_url_btcpay()
     sphinxrelay_onion_url = get_onion_url_sphinxrelay()
+    whirlpool_onion_url = get_onion_url_for_service("whirlpool")
 
     # v3 Services
     v3_services = []
@@ -65,7 +80,7 @@ def page_tor():
     v3_services.append(create_v3_service("Mempool", general_onion_url, "4080 / 4081", True, ""))
     v3_services.append(create_v3_service("LNbits", lnbits_onion_url, "80 / 443", True, ""))
     v3_services.append(create_v3_service("Lightning Terminal", general_onion_url, "8443", True, ""))
-    v3_services.append(create_v3_service("Whirlpool", general_onion_url, "8899", False, ""))
+    v3_services.append(create_v3_service("Whirlpool", whirlpool_onion_url, "8899", False, ""))
     v3_services.append(create_v3_service("Netdata", general_onion_url, "19999 / 20000", True, ""))
     v3_services.append(create_v3_service("Specter Desktop", general_onion_url, "25441", True, "", force_https=True))
     v3_services.append(create_v3_service("Glances", general_onion_url, "61208 / 61209", True, ""))
@@ -77,6 +92,8 @@ def page_tor():
     v3_services.append(create_v3_service("Electrum Server", electrs_onion_url, "50001", False, "https://mynodebtc.github.io/tor/electrum.html"))
     v3_services.append(create_v3_service("Electrum Server", electrs_onion_url, "50002", False, "https://mynodebtc.github.io/tor/electrum.html"))
     v3_services.append(create_v3_service("Sphinx Relay", sphinxrelay_onion_url, "53001", True, ""))
+
+    add_dynamic_app_v3_services(v3_services)
     
     # App links
     rpc_password = get_bitcoin_rpc_password()
@@ -86,6 +103,8 @@ def page_tor():
     templateData = {
         "title": "myNode Tor Services",
         "version": get_tor_version(),
+        "is_btc_tor_enabled": settings_file_exists("btc_tor_enabled"),
+        "is_lnd_tor_enabled": settings_file_exists("lnd_tor_enabled"),
         "v3_services": v3_services,
         "fully_noded_link": fully_noded_link,
         "ui_settings": read_ui_settings()

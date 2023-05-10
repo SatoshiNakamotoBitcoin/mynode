@@ -33,6 +33,9 @@ fi
 # Skip base upgrades if we are doing an app install / uninstall
 if ! skip_base_upgrades ; then
 
+    # Update SD card
+    mkdir -p /etc/torrc.d
+
     # Create any necessary users
     useradd -m -s /bin/bash joinmarket || true
 
@@ -42,7 +45,9 @@ if ! skip_base_upgrades ; then
 
     # User updates and settings
     adduser admin bitcoin
+    adduser joinmarket bitcoin
     grep "joinmarket" /etc/sudoers || (echo 'joinmarket ALL=(ALL) NOPASSWD:ALL' | EDITOR='tee -a' visudo)
+    passwd -l root
 
     # Migrate from version file to version+install combo
     /usr/bin/mynode_migrate_version_files.sh
@@ -72,6 +77,16 @@ if ! skip_base_upgrades ; then
         grep -qxF "deb https://deb.torproject.org/torproject.org ${DEBIAN_VERSION} main" /etc/apt/sources.list  || echo "deb https://deb.torproject.org/torproject.org ${DEBIAN_VERSION} main" >> /etc/apt/sources.list
         grep -qxF "deb-src https://deb.torproject.org/torproject.org ${DEBIAN_VERSION} main" /etc/apt/sources.list  || echo "deb-src https://deb.torproject.org/torproject.org ${DEBIAN_VERSION} main" >> /etc/apt/sources.list
     fi
+    if [ -f /mnt/hdd/mynode/settings/tor_repo_disabled ]; then
+        sed -i '/^deb https:\/\/deb.torproject.org/d' /etc/apt/sources.list
+        sed -i '/^deb-src https:\/\/deb.torproject.org/d' /etc/apt/sources.list
+    fi
+    if [ "$DEBIAN_VERSION" = "buster" ]; then
+        grep -qxF "deb http://deb.debian.org/debian buster-backports main" /etc/apt/sources.list  || echo "deb http://deb.debian.org/debian buster-backports main" >> /etc/apt/sources.list
+    fi
+    # Add I2P Repo
+    /bin/bash /usr/share/mynode/scripts/add_i2p_repo.sh
+
     # Raspbian mirrors
     #if [ $IS_RASPI = 1 ]; then
     #    grep -qxF "deb http://plug-mirror.rcac.purdue.edu/raspbian/ ${DEBIAN_VERSION} main" /etc/apt/sources.list  || echo "deb http://plug-mirror.rcac.purdue.edu/raspbian/ ${DEBIAN_VERSION} main" >> /etc/apt/sources.list
@@ -88,9 +103,13 @@ if ! skip_base_upgrades ; then
     gpg --keyserver hkp://keyserver.ubuntu.com --recv-keys E777299FC265DD04793070EB944D35F9AC3DB76A # Bitcoin - Michael Ford (fanquake)
     curl https://keybase.io/suheb/pgp_keys.asc | gpg --import
     curl https://samouraiwallet.com/pgp.txt | gpg --import # two keys from Samourai team
-    gpg  --keyserver hkp://keyserver.ubuntu.com --recv-keys DE23E73BFA8A0AD5587D2FCDE80D2F3F311FD87E #loopd
-    $TORIFY curl https://deb.torproject.org/torproject.org/A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89.asc | gpg --import  # tor
-    gpg --export A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89 | apt-key add -                                       # tor
+    gpg --keyserver hkp://keyserver.ubuntu.com --recv-keys DE23E73BFA8A0AD5587D2FCDE80D2F3F311FD87E #loopd
+    gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys 26984CB69EB8C4A26196F7A4D7D916376026F177 # Lightning Terminal
+    $TORIFY wget -q https://deb.torproject.org/torproject.org/A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89.asc -O- | apt-key add - # Tor
+    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138   # Debian Backports
+    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 0E98404D386FA1D9   # Debian Backports
+    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 74A941BA219EC810   # Tor
+    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 66F6C87B98EBCFE2   # I2P (R4SAS)
     set -e
 
 
@@ -102,32 +121,53 @@ if ! skip_base_upgrades ; then
     if [ $IS_X86 = 1 ]; then
         apt-mark hold grub*
     fi
-    apt-mark hold redis-server
+    #apt-mark hold redis-server
 
     # Upgrade packages
     $TORIFY apt-get -y upgrade
 
     # Install any new software
-    $TORIFY apt-get -y install apt-transport-https
+    $TORIFY apt-get -y install apt-transport-https lsb-release gnupg
     $TORIFY apt-get -y install fonts-dejavu
     $TORIFY apt-get -y install pv sysstat network-manager unzip pkg-config libfreetype6-dev libpng-dev
-    $TORIFY apt-get -y install libatlas-base-dev libffi-dev libssl-dev glances python3-bottle
+    $TORIFY apt-get -y install libatlas-base-dev libffi-dev libssl-dev python3-bottle
     $TORIFY apt-get -y -qq install apt-transport-https ca-certificates
     $TORIFY apt-get -y install libgmp-dev automake libtool libltdl-dev libltdl7
-    $TORIFY apt-get -y install xorg chromium openbox lightdm openjdk-11-jre libevent-dev ncurses-dev
+    $TORIFY apt-get -y install openjdk-11-jre libevent-dev ncurses-dev
     $TORIFY apt-get -y install libudev-dev libusb-1.0-0-dev python3-venv gunicorn sqlite3 libsqlite3-dev
     $TORIFY apt-get -y install torsocks python3-requests libsystemd-dev libjpeg-dev zlib1g-dev psmisc
     $TORIFY apt-get -y install hexyl libbz2-dev liblzma-dev netcat-openbsd hdparm iotop nut obfs4proxy
-    $TORIFY apt-get -y install libpq-dev
+    $TORIFY apt-get -y install libpq-dev socat btrfs-progs i2pd
+
+    # Install software specific to debian version
+    if [ "$DEBIAN_VERSION" == "bullseye" ]; then
+        apt-get -y install wireguard
+    elif [ "$DEBIAN_VERSION" == "buster" ]; then
+        $TORIFY apt-get -y -t buster-backports install wireguard
+    else
+        echo "========================================="
+        echo "== UNKNOWN DEBIAN VERSION: $DEBIAN_VERSION"
+        echo "== SOME APPS MAY NOT WORK PROPERLY"
+        echo "========================================="
+    fi
+
+    # Install Openbox GUI
+    if [ $IS_X86 = 1 ]; then
+        $TORIFY apt-get -y install xorg chromium openbox lightdm
+    fi
 
     # Install device specific packages
     if [ $IS_X86 = 1 ]; then
         $TORIFY apt-get -y install cloud-init
     fi
 
-    # Make sure some software is removed
+    # Use timesyncd for NTP
     apt-get -y purge ntp # (conflicts with systemd-timedatectl)
     apt-get -y purge chrony # (conflicts with systemd-timedatectl)
+    if [ $IS_ARMBIAN = 1 ] ; then
+        $TORIFY apt-get -y install systemd-timesyncd
+        timedatectl set-ntp true
+    fi
 
 
     # Install nginx
@@ -137,9 +177,6 @@ if ! skip_base_upgrades ; then
     rm -f /etc/nginx/modules-enabled/50-mod-* || true
     echo "" > /etc/nginx/sites-available/default
     dpkg --configure -a
-
-    # Install any pip software
-    pip2 install tzupdate virtualenv pysocks redis qrcode image subprocess32 --no-cache-dir
 
 
     # Install Rust (only needed on 32-bit RPi for building some python wheels)
@@ -185,7 +222,6 @@ if ! skip_base_upgrades ; then
 
         # Mark apps using python as needing re-install
         rm -f /home/bitcoin/.mynode/specter_version
-        rm -f /home/bitcoin/.mynode/lnbits_version
         rm -f /home/bitcoin/.mynode/pyblock_version
         rm -f /home/bitcoin/.mynode/ckbunker_version
         rm -f /home/bitcoin/.mynode/joininbox_version_latest
@@ -195,12 +231,28 @@ if ! skip_base_upgrades ; then
         echo "Python up to date"
     fi
 
+    # Add to python path
+    [ -d /usr/local/lib/python2.7/dist-packages ] && echo "/var/pynode" > /usr/local/lib/python2.7/dist-packages/pynode.pth
+    [ -d /usr/local/lib/python3.7/site-packages ] && echo "/var/pynode" > /usr/local/lib/python3.7/site-packages/pynode.pth
+    [ -d /usr/local/lib/python3.8/site-packages ] && echo "/var/pynode" > /usr/local/lib/python3.8/site-packages/pynode.pth
+
+    # Remove old python files so new copies are used (files migrated to pynode)
+    set +x
+    PYNODE_FILES="/var/pynode/*.py"
+    for pynode_file in $PYNODE_FILES; do
+        echo "Migrating pynode file $pynode_file..."
+        pynode_file="$(basename -- $pynode_file)"
+        rm -f /var/www/mynode/${pynode_file}    # .py
+        rm -f /var/www/mynode/${pynode_file}c   # .pyc
+    done
+    set -x
+
 
     # Install any pip3 software
-    pip3 install --upgrade pip setuptools wheel
-    pip3 install gnureadline docker-compose pipenv bcrypt pysocks redis systemd --no-cache-dir
-    pip3 install flask pam python-bitcoinrpc prometheus_client psutil transmissionrpc --no-cache-dir
-    pip3 install qrcode image pyudev --no-cache-dir
+    pip3 install --upgrade pip setuptools wheel || pip3 install --upgrade pip setuptools wheel --use-deprecated=html5lib
+    
+    pip3 install -r /usr/share/mynode/mynode_pip3_requirements.txt --no-cache-dir || \
+        pip3 install -r /usr/share/mynode/mynode_pip3_requirements.txt --no-cache-dir --use-deprecated=html5lib
 
     # For RP4 32-bit, install specific grpcio version known to build (uses proper glibc for wheel)
     if [ $IS_32_BIT = 1 ]; then
@@ -233,15 +285,17 @@ if ! skip_base_upgrades ; then
 
     # Update NPM (Node Package Manager)
     npm install -g npm@$NODE_NPM_VERSION
+    npm install -g yarn
     
     # Install Docker
-    if [ ! -f /usr/bin/docker ]; then
-        rm -f /tmp/docker_install.sh
-        wget https://get.docker.com -O /tmp/docker_install.sh
-        sed -i 's/sleep 20/sleep 1/' /tmp/docker_install.sh
-        /bin/bash /tmp/docker_install.sh
-    fi
-
+    mkdir -p /etc/apt/keyrings
+    $TORIFY curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg
+    echo \
+        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+        $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    $TORIFY apt-get update --allow-releaseinfo-change
+    $TORIFY apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin || true
+    
     # Use systemd for managing Docker
     rm -f /etc/init.d/docker
     rm -f /etc/systemd/system/multi-user.target.wants/docker.service
@@ -343,9 +397,11 @@ if [ "$CURRENT" != "$LND_VERSION" ]; then
 
     wget $LND_UPGRADE_URL
     wget $LND_UPGRADE_MANIFEST_URL -O manifest.txt
-    wget $LND_UPGRADE_MANIFEST_SIG_URL -O manifest.txt.sig
+    wget $LND_UPGRADE_MANIFEST_ROASBEEF_SIG_URL -O manifest_roasbeef.txt.sig || true
+    wget $LND_UPGRADE_MANIFEST_GUGGERO_SIG_URL -O manifest_guggero.txt.sig || true
 
-    gpg --verify manifest.txt.sig manifest.txt
+    gpg --verify manifest_roasbeef.txt.sig manifest.txt || \
+    gpg --verify manifest_guggero.txt.sig manifest.txt
     if [ $? == 0 ]; then
         # Install LND
         tar -xzf lnd-*.tar.gz
@@ -581,45 +637,6 @@ if [ "$CURRENT" != "$SECP256K1_VERSION" ]; then
     echo $SECP256K1_VERSION > $SECP256K1_VERSION_FILE
 fi
 
-# Upgrade JoinMarket (legacy)
-if should_install_app "joinmarket" ; then
-    echo "Upgrading JoinMarket..." # Old
-    if [ $IS_RASPI = 1 ] || [ $IS_X86 = 1 ]; then
-        JOINMARKET_UPGRADE_URL=https://github.com/JoinMarket-Org/joinmarket-clientserver/archive/$JOINMARKET_VERSION.tar.gz
-        CURRENT=""
-        if [ -f $JOINMARKET_VERSION_FILE ]; then
-            CURRENT=$(cat $JOINMARKET_VERSION_FILE)
-        fi
-        if [ "$CURRENT" != "$JOINMARKET_VERSION" ]; then
-            # Download and build JoinMarket
-            cd /opt/mynode
-
-            # Backup old version in case config / wallet was stored within folder
-            if [ ! -d /opt/mynode/jm_backup ] && [ -d /opt/mynode/joinmarket-clientserver ]; then
-                cp -R /opt/mynode/joinmarket-clientserver /opt/mynode/jm_backup
-                chown -R bitcoin:bitcoin /opt/mynode/jm_backup
-            fi
-
-            rm -rf joinmarket-clientserver
-
-            sudo -u bitcoin wget $JOINMARKET_UPGRADE_URL -O joinmarket.tar.gz
-            sudo -u bitcoin tar -xvf joinmarket.tar.gz
-            sudo -u bitcoin rm joinmarket.tar.gz
-            mv joinmarket-clientserver-* joinmarket-clientserver
-
-            cd joinmarket-clientserver
-
-            # Apply Patch to fix cryptography dependency
-            #sed -i "s/'txtorcon', 'pyopenssl'/'txtorcon', 'cryptography==3.3.2', 'pyopenssl'/g" jmdaemon/setup.py || true
-
-            # Install
-            yes | ./install.sh --without-qt
-
-            echo $JOINMARKET_VERSION > $JOINMARKET_VERSION_FILE
-        fi
-    fi
-fi
-
 # Upgrade JoininBox
 echo "Upgrading JoinInBox..."
 if should_install_app "joininbox" ; then
@@ -652,7 +669,11 @@ if should_install_app "joininbox" ; then
             fi
 
             # Install
-            sudo -u joinmarket bash -c "cd /home/joinmarket/; ${JM_ENV_VARS} ./install.joinmarket.sh install" || true
+            sudo -u joinmarket bash -c "cd /home/joinmarket/; ${JM_ENV_VARS} ./install.joinmarket.sh --install install" || true
+            sudo -u joinmarket bash -c "cd /home/joinmarket/; ${JM_ENV_VARS} ./install.joinmarket-api.sh on" || true            
+            
+            # Enable obwatcher service
+            systemctl enable ob-watcher
 
             echo $JOININBOX_VERSION > $JOININBOX_VERSION_FILE
         fi
@@ -662,7 +683,6 @@ fi
 # Install Whirlpool
 if should_install_app "whirlpool" ; then
     WHIRLPOOL_UPGRADE_URL=https://code.samourai.io/whirlpool/whirlpool-client-cli/uploads/$WHIRLPOOL_UPLOAD_FILE_ID/whirlpool-client-cli-$WHIRLPOOL_VERSION-run.jar
-    WHIRLPOOL_SIG_URL=https://code.samourai.io/whirlpool/whirlpool-client-cli/uploads/$WHIRLPOOL_UPLOAD_SIG_ID/whirlpool-client-cli-$WHIRLPOOL_VERSION-run.jar.sig.asc
     CURRENT=""
     if [ -f $WHIRLPOOL_VERSION_FILE ]; then
         CURRENT=$(cat $WHIRLPOOL_VERSION_FILE)
@@ -673,7 +693,6 @@ if should_install_app "whirlpool" ; then
         sudo rm -rf *.jar
         sudo -u bitcoin wget -O whirlpool.jar $WHIRLPOOL_UPGRADE_URL
 
-        #wget -O whirlpool.asc $WHIRLPOOL_SIG_URL
         cp -f /usr/share/whirlpool/whirlpool.asc whirlpool.asc
         gpg --verify whirlpool.asc
 
@@ -704,7 +723,8 @@ if should_install_app "rtl" ; then
             sudo -u bitcoin rm RTL.tar.gz
             sudo -u bitcoin mv RTL-* RTL
             cd RTL
-            sudo -u bitcoin NG_CLI_ANALYTICS=false npm install --only=production
+            sudo -u bitcoin NG_CLI_ANALYTICS=false npm install --only=production --legacy-peer-deps
+            sudo -u bitcoin npm install request --save
 
             echo $RTL_VERSION > $RTL_VERSION_FILE
         else
@@ -731,38 +751,6 @@ if should_install_app "btcrpcexplorer" ; then
         sudo -u bitcoin npm install --only=production
 
         echo $BTCRPCEXPLORER_VERSION > $BTCRPCEXPLORER_VERSION_FILE
-    fi
-fi
-
-
-# Upgrade LNBits
-if should_install_app "lnbits" ; then
-    # Find URL by going to https://github.com/lnbits/lnbits/releases and finding the exact commit for the mynode tag
-    LNBITS_UPGRADE_URL=https://github.com/lnbits/lnbits/archive/$LNBITS_VERSION.tar.gz
-    CURRENT=""
-    if [ -f $LNBITS_VERSION_FILE ]; then
-        CURRENT=$(cat $LNBITS_VERSION_FILE)
-    fi
-    if [ "$CURRENT" != "$LNBITS_VERSION" ]; then
-        cd /opt/mynode
-        rm -rf lnbits
-        sudo -u bitcoin wget $LNBITS_UPGRADE_URL -O lnbits.tar.gz
-        sudo -u bitcoin tar -xvf lnbits.tar.gz
-        sudo -u bitcoin rm lnbits.tar.gz
-        sudo -u bitcoin mv lnbits-* lnbits
-        cd lnbits
-
-        # Copy over config file
-        cp /usr/share/mynode/lnbits.env /opt/mynode/lnbits/.env
-        chown bitcoin:bitcoin /opt/mynode/lnbits/.env
-
-        # Install lnbits
-        sudo -u bitcoin python3 -m venv lnbits_venv
-        sudo -u bitcoin ./lnbits_venv/bin/pip install -r requirements.txt
-        sudo -u bitcoin ./lnbits_venv/bin/quart assets
-        sudo -u bitcoin ./lnbits_venv/bin/quart migrate
-
-        echo $LNBITS_VERSION > $LNBITS_VERSION_FILE
     fi
 fi
 
@@ -810,7 +798,10 @@ if should_install_app "thunderhub" ; then
         sudo -u bitcoin mv thunderhub-* thunderhub
         cd thunderhub
 
-        sudo -u bitcoin npm install # --only=production # (can't build with only production)
+        # Patch versions
+        sed -i 's/\^5.3.5/5.3.3/g' package.json || true     # Fixes segfault with 5.3.5 on x86
+
+        sudo -u bitcoin npm install --legacy-peer-deps # --only=production # (can't build with only production)
         sudo -u bitcoin npm run build
         sudo -u bitcoin npx next telemetry disable
 
@@ -952,47 +943,17 @@ fi
 
 
 # Upgrade WARden
-if should_install_app "warden" ; then
-    WARDEN_UPGRADE_URL=https://github.com/pxsocs/warden/archive/refs/tags/$WARDEN_VERSION.tar.gz
-    CURRENT=""
-    if [ -f $WARDEN_VERSION_FILE ]; then
-        CURRENT=$(cat $WARDEN_VERSION_FILE)
-    fi
-    if [ "$CURRENT" != "$WARDEN_VERSION" ]; then
-        cd /opt/mynode
-        rm -rf warden
-
-        sudo -u bitcoin wget $WARDEN_UPGRADE_URL -O warden.tar.gz
-        sudo -u bitcoin tar -xvf warden.tar.gz
-        sudo -u bitcoin rm warden.tar.gz
-        sudo -u bitcoin mv warden-* warden
-        cd warden
-
-        # Make venv
-        if [ ! -d env ]; then
-            sudo -u bitcoin python3 -m venv env
-        fi
-        source env/bin/activate
-        pip3 install -r requirements.txt
-        deactivate
-
-        echo $WARDEN_VERSION > $WARDEN_VERSION_FILE
-    fi
-fi
-
-
-# Upgrade WARden Terminal
 if should_install_app "wardenterminal" ; then
-    WARDEN_TERMINAL_UPGRADE_URL=https://github.com/pxsocs/warden_terminal/archive/$WARDEN_TERMINAL_VERSION.tar.gz
+    WARDENTERMINAL_UPGRADE_URL=https://github.com/pxsocs/warden_terminal/archive/$WARDENTERMINAL_VERSION.tar.gz
     CURRENT=""
-    if [ -f $WARDEN_TERMINAL_VERSION_FILE ]; then
-        CURRENT=$(cat $WARDEN_TERMINAL_VERSION_FILE)
+    if [ -f $WARDENTERMINAL_VERSION_FILE ]; then
+        CURRENT=$(cat $WARDENTERMINAL_VERSION_FILE)
     fi
-    if [ "$CURRENT" != "$WARDEN_TERMINAL_VERSION" ]; then
+    if [ "$CURRENT" != "$WARDENTERMINAL_VERSION" ]; then
         cd /opt/mynode
         rm -rf wardenterminal
 
-        sudo -u bitcoin wget $WARDEN_TERMINAL_UPGRADE_URL -O wardenterminal.tar.gz
+        sudo -u bitcoin wget $WARDENTERMINAL_UPGRADE_URL -O wardenterminal.tar.gz
         sudo -u bitcoin tar -xvf wardenterminal.tar.gz
         sudo -u bitcoin rm wardenterminal.tar.gz
         sudo -u bitcoin mv warden_terminal-* wardenterminal
@@ -1006,7 +967,7 @@ if should_install_app "wardenterminal" ; then
         pip3 install -r requirements.txt
         deactivate
 
-        echo $WARDEN_TERMINAL_VERSION > $WARDEN_TERMINAL_VERSION_FILE
+        echo $WARDENTERMINAL_VERSION > $WARDENTERMINAL_VERSION_FILE
     fi
 fi
 
@@ -1024,8 +985,16 @@ if should_install_app "bos" ; then
     fi
 fi
 
+# Make sure "Remote Access" apps are marked installed
+touch /home/bitcoin/.mynode/install_tor
+touch /home/bitcoin/.mynode/install_premium_plus
+touch /home/bitcoin/.mynode/install_vpn
 
+# Init dynamic apps, so any new applications are picked up before reboot
+mynode-manage-apps init || true
 
+# Upgrade Dyanmic Applications
+mynode-manage-apps upgrade || true
 
 
 # Upgrade Tor
@@ -1072,6 +1041,7 @@ apt-get clean
 
 # Enable any new/required services
 systemctl enable check_in
+systemctl enable premium_plus_connect
 systemctl enable background
 systemctl enable docker
 systemctl enable bitcoin
@@ -1085,6 +1055,7 @@ systemctl enable docker_images
 systemctl enable glances
 systemctl enable webssh2
 systemctl enable tor
+systemctl enable i2pd
 systemctl enable loop
 systemctl enable pool
 systemctl enable rotate_logs
@@ -1092,21 +1063,21 @@ systemctl enable corsproxy_btcrpc
 systemctl enable usb_extras
 
 # Disable any old services
-systemctl disable bitcoind || true
-systemctl disable poold || true
-systemctl disable loopd || true
-systemctl disable btc_rpc_explorer || true
-systemctl disable mempoolspace || true
-systemctl disable hitch || true
-systemctl disable mongodb || true
-systemctl disable lnd_admin || true
-systemctl disable lnd_unlock || true
-systemctl disable dhcpcd || true
-rm /etc/systemd/system/bitcoind.service || true
-rm /etc/systemd/system/btc_rpc_explorer.service || true
-rm /etc/systemd/system/mempoolspace.service || true
-rm /etc/systemd/system/poold.service || true
-rm /etc/systemd/system/loopd.service || true
+systemctl disable bitcoind > /dev/null 2>&1 || true
+systemctl disable poold > /dev/null 2>&1 || true
+systemctl disable loopd > /dev/null 2>&1 || true
+systemctl disable btc_rpc_explorer > /dev/null 2>&1 || true
+systemctl disable mempoolspace > /dev/null 2>&1 || true
+systemctl disable hitch > /dev/null 2>&1 || true
+systemctl disable mongodb > /dev/null 2>&1 || true
+systemctl disable lnd_admin > /dev/null 2>&1 || true
+systemctl disable lnd_unlock > /dev/null 2>&1 || true
+systemctl disable dhcpcd > /dev/null 2>&1 || true
+rm -f /etc/systemd/system/bitcoind.service
+rm -f /etc/systemd/system/btc_rpc_explorer.service
+rm -f /etc/systemd/system/mempoolspace.service
+rm -f /etc/systemd/system/poold.service
+rm -f /etc/systemd/system/loopd.service
 
 # Reload service settings
 systemctl daemon-reload

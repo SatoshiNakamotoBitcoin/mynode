@@ -9,6 +9,7 @@ from device_info import *
 from thread_functions import *
 from systemctl_info import *
 from application_info import *
+from drive_info import *
 from price_info import *
 from messages import *
 if isPython3():
@@ -24,6 +25,15 @@ mynode_api = Blueprint('mynode_api',__name__)
 
 
 ### Page functions
+@mynode_api.route("/api/ping")
+def api_ping():
+    check_logged_in()
+
+    data = {}
+    data["status"] = get_mynode_status()
+    data["uptime_seconds"] = get_system_uptime_in_seconds()
+    return jsonify(data)
+
 @mynode_api.route("/api/get_bitcoin_info")
 def api_get_bitcoin_info():
     check_logged_in()
@@ -31,9 +41,11 @@ def api_get_bitcoin_info():
     data = {}
     data["current_block"] = get_mynode_block_height()
     data["block_height"] = get_bitcoin_block_height()
+    data["progress"] = get_bitcoin_sync_progress()
     data["peer_count"] = get_bitcoin_peer_count()
     #data["difficulty"] = get_bitcoin_difficulty() # Dont send difficulty, it causes errors in jsonify
-    data["mempool_size"] = get_bitcoin_mempool_size()
+    data["mempool_size"] = get_bitcoin_mempool_info()["display_bytes"]
+    data["recommended_fees"] = get_bitcoin_recommended_fees()
 
     # Add blocks
     data["recent_blocks"] = None
@@ -88,6 +100,7 @@ def api_get_service_status():
 
     # Try standard status API
     data["status"] = get_application_status(service)
+    data["status_basic"] = get_service_status_basic_text(service)
     data["color"] = get_application_status_color(service)
     data["sso_token"] = get_application_sso_token(service)
     data["sso_token_enabled"] = get_application_sso_token_enabled(service)
@@ -111,6 +124,20 @@ def api_get_app_info():
 
     return jsonify(data)
 
+@mynode_api.route("/api/restart_app")
+def api_restart_app():
+    check_logged_in()
+
+    app = request.args.get("app")
+    if not app:
+        return "NO_APP_SPECIFIED"
+    if not is_application_valid(app):
+        return "INVALID_APP_NAME"
+    if not restart_application(app):
+        return "ERROR"
+
+    return "OK"
+
 @mynode_api.route("/api/get_device_info")
 def api_get_device_info():
     check_logged_in()
@@ -120,6 +147,7 @@ def api_get_device_info():
     data["cpu"] = get_cpu_usage()
     data["ram"] = get_ram_usage()
     data["temp"] = get_device_temp()
+    data["uptime"] = get_system_uptime()
     data["is_installing_docker_images"] = is_installing_docker_images()
     data["is_electrs_active"] = is_electrs_active()
 
@@ -217,6 +245,30 @@ def api_toggle_setting():
     
     return jsonify(data)
 
+@mynode_api.route("/api/set_setting")
+def api_set_setting():
+    check_logged_in()
+
+    data = {}
+    data["status"] = "unknown"
+
+    if not request.args.get("setting"):
+        data["status"] = "no_setting_specified"
+        return jsonify(data)
+    if not request.args.get("value"):
+        data["status"] = "no_value_specified"
+        return jsonify(data)
+
+    setting = request.args.get("setting")
+    value = request.args.get("value")
+    if setting == "format_filesystem_type":
+        set_drive_filesystem_type(value)
+        data["status"] = "success"
+    else:
+        data["status"] = "unknown_setting"
+    
+    return jsonify(data)
+
 @mynode_api.route("/api/get_drive_benchmark")
 def api_get_drive_benchmark():
     check_logged_in()
@@ -226,6 +278,24 @@ def api_get_drive_benchmark():
     data["data"] = "UNKNOWN"
     try:
         data["data"] = to_string(subprocess.check_output("hdparm -Tt $(cat /tmp/.mynode_drive)", shell=True))
+        data["status"] = "success"
+    except Exception as e:
+        data["data"] = str(e)
+    return jsonify(data)
+
+@mynode_api.route("/api/get_usb_info")
+def api_get_usb_info():
+    check_logged_in()
+
+    data = {}
+    data["status"] = "error"
+    data["data"] = "UNKNOWN"
+    try:
+        info = ""
+        info += to_string(subprocess.check_output("lsusb", shell=True))
+        info += "\n\n"
+        info += to_string(subprocess.check_output("lsusb -t", shell=True))
+        data["data"] = info
         data["status"] = "success"
     except Exception as e:
         data["data"] = str(e)

@@ -9,7 +9,7 @@ set -x
 set -e
 
 if [ "$#" != "1" ]; then
-    echo "Usage: $0 <ip address>"
+    echo "Usage: $0 <ip address | online>"
     exit 1
 fi
 SERVER_IP=$1
@@ -29,7 +29,8 @@ IS_64_BIT=0
 IS_UNKNOWN=0
 DEVICE_TYPE="unknown"
 MODEL=$(cat /proc/device-tree/model) || IS_UNKNOWN=1
-uname -a | grep amd64 && IS_X86=1 && IS_UNKNOWN=0 || true
+DEBIAN_VERSION=$(lsb_release -c -s) || DEBIAN_VERSION="unknown"
+uname -a | grep amd64 && IS_X86=1 && IS_64_BIT=1 && IS_UNKNOWN=0 || true
 if [[ $MODEL == *"Rock64"* ]]; then
     IS_ARMBIAN=1
     IS_ROCK64=1
@@ -113,41 +114,62 @@ elif [ $IS_ROCKPI4 = 1 ]; then
 elif [ $IS_X86 = 1 ]; then
     TARBALL="mynode_rootfs_debian.tar.gz"
 fi
-wget http://${SERVER_IP}:8000/${TARBALL} -O /tmp/rootfs.tar.gz
+if [ "$SERVER_IP" == "online" ]; then
+    TARBALL="${TARBALL/"mynode_rootfs_"/"mynode_release_latest_"}"
+    wget https://mynodebtc.com/device/upgrade_images/${TARBALL} -O /tmp/rootfs.tar.gz
+else
+    wget http://${SERVER_IP}:8000/${TARBALL} -O /tmp/rootfs.tar.gz
+fi
 
 # Extract rootfs (so we can reference temporary files)
 tar -xvf /tmp/rootfs.tar.gz -C /tmp/upgrade/
 TMP_INSTALL_PATH="/tmp/upgrade/out/rootfs_*"
 
+# Setup some dependencies
+mkdir -p /usr/share/mynode/
+cp -f /tmp/upgrade/out/rootfs_*/usr/share/mynode/mynode_device_info.sh /usr/share/mynode/mynode_device_info.sh
+cp -f /tmp/upgrade/out/rootfs_*/usr/share/mynode/mynode_config.sh /usr/share/mynode/mynode_config.sh
+cp -f /tmp/upgrade/out/rootfs_*/usr/share/mynode/mynode_functions.sh /usr/share/mynode/mynode_functions.sh
+cp -f /tmp/upgrade/out/rootfs_*/usr/bin/mynode-get-device-serial /usr/bin/mynode-get-device-serial
+
 # Source file containing app versions
 source /tmp/upgrade/out/rootfs_*/usr/share/mynode/mynode_app_versions.sh
 
+# Update SD card
+mkdir -p /etc/torrc.d
 
 # Create any necessary users
+useradd -p $(openssl passwd -1 bolt) -m -s /bin/bash admin || true
 useradd -m -s /bin/bash bitcoin || true
 useradd -m -s /bin/bash joinmarket || true
+passwd -l root
+adduser admin sudo
 
 # Setup bitcoin user folders
 mkdir -p /home/bitcoin/.mynode/
 chown bitcoin:bitcoin /home/bitcoin
 chown -R bitcoin:bitcoin /home/bitcoin/.mynode/
 
+# Update host info
+echo "myNode" > /etc/hostname
+sed -i 's/rock64/myNode/g' /etc/hosts
+sed -i 's/rockpi4-b/myNode/g' /etc/hosts
+
 # Update sources
 apt-get -y update --allow-releaseinfo-change
 
 # Add sources
-apt-get -y install apt-transport-https curl gnupg
-DEBIAN_VERSION=$(lsb_release -c | awk '{ print $2 }')
+apt-get -y install apt-transport-https curl gnupg ca-certificates
 # Tor (arm32 support was dropped)
 if [ $IS_64_BIT = 1 ]; then
     grep -qxF "deb https://deb.torproject.org/torproject.org ${DEBIAN_VERSION} main" /etc/apt/sources.list  || echo "deb https://deb.torproject.org/torproject.org ${DEBIAN_VERSION} main" >> /etc/apt/sources.list
     grep -qxF "deb-src https://deb.torproject.org/torproject.org ${DEBIAN_VERSION} main" /etc/apt/sources.list  || echo "deb-src https://deb.torproject.org/torproject.org ${DEBIAN_VERSION} main" >> /etc/apt/sources.list
 fi
-# Raspbian mirrors
-# if [ $IS_RASPI = 1 ]; then
-#     grep -qxF "deb http://plug-mirror.rcac.purdue.edu/raspbian/ ${DEBIAN_VERSION} main" /etc/apt/sources.list  || echo "deb http://plug-mirror.rcac.purdue.edu/raspbian/ ${DEBIAN_VERSION} main" >> /etc/apt/sources.list
-#     grep -qxF "deb http://mirrors.ocf.berkeley.edu/raspbian/raspbian ${DEBIAN_VERSION} main" /etc/apt/sources.list  || echo "deb http://mirrors.ocf.berkeley.edu/raspbian/raspbian ${DEBIAN_VERSION} main" >> /etc/apt/sources.list
-# fi
+if [ "$DEBIAN_VERSION" = "buster" ]; then
+    grep -qxF "deb http://deb.debian.org/debian buster-backports main" /etc/apt/sources.list  || echo "deb http://deb.debian.org/debian buster-backports main" >> /etc/apt/sources.list
+fi
+# Add I2P Repo
+/bin/bash $TMP_INSTALL_PATH/usr/share/mynode/scripts/add_i2p_repo.sh
 
 # Import Keys
 curl https://keybase.io/roasbeef/pgp_keys.asc | gpg --import
@@ -158,10 +180,13 @@ gpg --keyserver hkp://keyserver.ubuntu.com --recv-keys 01EA5486DE18A882D4C268459
 gpg --keyserver hkp://keyserver.ubuntu.com --recv-keys E777299FC265DD04793070EB944D35F9AC3DB76A # Bitcoin - Michael Ford (fanquake)
 curl https://keybase.io/suheb/pgp_keys.asc | gpg --import
 curl https://samouraiwallet.com/pgp.txt | gpg --import # two keys from Samourai team
-gpg  --keyserver hkp://keyserver.ubuntu.com --recv-keys DE23E73BFA8A0AD5587D2FCDE80D2F3F311FD87E #loopd
-curl https://deb.torproject.org/torproject.org/A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89.asc | gpg --import  # tor
-gpg --export A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89 | apt-key add -                                       # tor
-
+gpg --keyserver hkp://keyserver.ubuntu.com --recv-keys DE23E73BFA8A0AD5587D2FCDE80D2F3F311FD87E #loopd
+gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys 26984CB69EB8C4A26196F7A4D7D916376026F177 # Lightning Terminal
+wget -q https://deb.torproject.org/torproject.org/A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89.asc -O- | apt-key add - # Tor
+gpg --keyserver hkp://keyserver.ubuntu.com --recv-keys 648ACFD622F3D138     # Debian Backports
+gpg --keyserver hkp://keyserver.ubuntu.com --recv-keys 0E98404D386FA1D9     # Debian Backports
+apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 74A941BA219EC810   # Tor
+apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 66F6C87B98EBCFE2   # I2P (R4SAS)
 
 # Update OS
 apt -y update # Needed to accept new repos
@@ -171,35 +196,54 @@ apt-get -y update
 if [ $IS_X86 = 1 ]; then
     apt-mark hold grub*
 fi
-apt-mark hold redis-server
+#apt-mark hold redis-server
 
 # Upgrade packages
 apt-get -y upgrade
 
 # Install other tools (run section multiple times to make sure success)
 export DEBIAN_FRONTEND=noninteractive
-apt-get -y install apt-transport-https
+apt-get -y install apt-transport-https lsb-release
 apt-get -y install htop git curl bash-completion jq dphys-swapfile lsof libzmq3-dev
-apt-get -y install build-essential python-dev python-pip python3-dev python3-pip
-apt-get -y install transmission-cli fail2ban ufw tclsh bluez python-bluez redis-server
-#apt-get -y install mongodb-org
+apt-get -y install build-essential python3-dev python3-pip python3-grpcio
+apt-get -y install transmission-cli fail2ban ufw tclsh redis-server
 apt-get -y install clang hitch zlib1g-dev libffi-dev file toilet ncdu
 apt-get -y install toilet-fonts avahi-daemon figlet libsecp256k1-dev
 apt-get -y install inotify-tools libssl-dev tor tmux screen fonts-dejavu
-apt-get -y install python-grpcio python3-grpcio
 apt-get -y install pv sysstat network-manager rsync parted unzip pkg-config
 apt-get -y install libfreetype6-dev libpng-dev libatlas-base-dev libgmp-dev libltdl-dev
-apt-get -y install libffi-dev libssl-dev glances python3-bottle automake libtool libltdl7
+apt-get -y install libffi-dev libssl-dev python3-bottle automake libtool libltdl7
 apt -y -qq install apt-transport-https ca-certificates
-apt-get -y install xorg chromium openbox lightdm openjdk-11-jre libevent-dev ncurses-dev
+apt-get -y install openjdk-11-jre libevent-dev ncurses-dev
 apt-get -y install zlib1g-dev libudev-dev libusb-1.0-0-dev python3-venv gunicorn
 apt-get -y install sqlite3 libsqlite3-dev torsocks python3-requests libsystemd-dev
 apt-get -y install libjpeg-dev zlib1g-dev psmisc hexyl libbz2-dev liblzma-dev netcat-openbsd
-apt-get -y install hdparm iotop nut obfs4proxy libpq-dev
+apt-get -y install hdparm iotop nut obfs4proxy libpq-dev socat btrfs-progs i2pd
+
+# Install packages dependent on Debian release
+if [ "$DEBIAN_VERSION" == "bullseye" ]; then
+    apt-get -y install wireguard
+elif [ "$DEBIAN_VERSION" == "buster" ]; then
+    $TORIFY apt-get -y -t buster-backports install wireguard
+else
+    echo "========================================="
+    echo "== UNKNOWN DEBIAN VERSION: $DEBIAN_VERSION"
+    echo "== SOME APPS MAY NOT WORK PROPERLY"
+    echo "========================================="
+fi
+
+# Install Openbox GUI
+if [ $IS_X86 = 1 ]; then
+    apt-get -y install xorg chromium openbox lightdm
+fi
 
 # Install device specific packages
 if [ $IS_X86 = 1 ]; then
     apt-get -y install cloud-init
+fi
+if [ $IS_ARMBIAN = 1 ] ; then
+    apt-get -y install systemd-timesyncd
+    timedatectl set-ntp true
 fi
 
 # Make sure some software is removed
@@ -225,16 +269,8 @@ usermod -a -G debian-tor bitcoin
 
 # Make admin a member of bitcoin
 adduser admin bitcoin
-
-# Install pip packages
-pip2 install setuptools
-pip2 install --upgrade setuptools
-pip2 install wheel
-pip2 install --upgrade wheel
-pip2 install speedtest-cli transmissionrpc flask python-bitcoinrpc redis prometheus_client requests
-pip2 install python-pam python-bitcoinlib psutil
-pip2 install grpcio grpcio-tools googleapis-common-protos
-pip2 install tzupdate virtualenv pysocks redis qrcode image subprocess32
+adduser joinmarket bitcoin
+grep "joinmarket" /etc/sudoers || (echo 'joinmarket ALL=(ALL) NOPASSWD:ALL' | EDITOR='tee -a' visudo)
 
 
 # Install Rust (only needed on 32-bit RPi for building some python wheels)
@@ -282,11 +318,11 @@ else
 fi
 
 
-# Install Python3 specific tools (run multiple times to make sure success)
+# Install Python3 specific tools
 pip3 install --upgrade pip wheel setuptools
-pip3 install gnureadline docker-compose pipenv bcrypt pysocks redis systemd --no-cache-dir
-pip3 install flask pam python-bitcoinrpc prometheus_client psutil transmissionrpc --no-cache-dir
-pip3 install qrcode image pyudev --no-cache-dir
+
+pip3 install -r $TMP_INSTALL_PATH/usr/share/mynode/mynode_pip3_requirements.txt --no-cache-dir || \
+    pip3 install -r $TMP_INSTALL_PATH/usr/share/mynode/mynode_pip3_requirements.txt --no-cache-dir --use-deprecated=html5lib
 
 # For RP4 32-bit, install specific grpcio version known to build (uses proper glibc for wheel)
 if [ $IS_32_BIT = 1 ]; then
@@ -302,7 +338,13 @@ if [ ! -f /tmp/installed_node ]; then
 fi
 
 # Install docker
-curl -sSL https://get.docker.com | sed 's/sleep 20/sleep 1/' | sudo sh || true
+mkdir -p /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+  $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+apt-get update --allow-releaseinfo-change
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin || true
 
 # Use systemd for managing docker
 rm -f /etc/init.d/docker
@@ -317,14 +359,25 @@ usermod -aG docker root
 # Install node packages
 npm install -g pug-cli browserify uglify-js babel-cli
 npm install -g npm@$NODE_NPM_VERSION
+npm install -g yarn
+
+# Install Log2Ram
+if [ $IS_RASPI = 1 ]; then
+    cd /tmp
+    rm -rf log2ram*
+    wget https://github.com/azlux/log2ram/archive/v1.2.2.tar.gz -O log2ram.tar.gz
+    tar -xvf log2ram.tar.gz
+    mv log2ram-* log2ram
+    cd log2ram
+    chmod +x install.sh
+    service log2ram stop
+    ./install.sh
+    cd ~
+fi
 
 # Remove existing MOTD login info
 rm -rf /etc/motd
 rm -rf /etc/update-motd.d/*
-
-# Install LNDManage
-# - skip, not default app
-
 
 #########################################################
 
@@ -407,9 +460,11 @@ if [ "$CURRENT" != "$LND_VERSION" ]; then
 
     wget $LND_UPGRADE_URL
     wget $LND_UPGRADE_MANIFEST_URL -O manifest.txt
-    wget $LND_UPGRADE_MANIFEST_SIG_URL -O manifest.txt.sig
+    wget $LND_UPGRADE_MANIFEST_ROASBEEF_SIG_URL -O manifest_roasbeef.txt.sig || true
+    wget $LND_UPGRADE_MANIFEST_GUGGERO_SIG_URL -O manifest_guggero.txt.sig || true
 
-    gpg --verify manifest.txt.sig manifest.txt
+    gpg --verify manifest_roasbeef.txt.sig manifest.txt || \
+    gpg --verify manifest_guggero.txt.sig manifest.txt
 
     tar -xzf lnd-*.tar.gz
     mv $LND_ARCH-$LND_VERSION lnd
@@ -652,7 +707,10 @@ if [ $IS_RASPI = 1 ] || [ $IS_X86 = 1 ]; then
         fi
 
         # Install
-        sudo -u joinmarket bash -c "cd /home/joinmarket/; ${JM_ENV_VARS} ./install.joinmarket.sh install" || true
+        sudo -u joinmarket bash -c "cd /home/joinmarket/; ${JM_ENV_VARS} ./install.joinmarket.sh --install install" || true
+        sudo -u joinmarket bash -c "cd /home/joinmarket/; ${JM_ENV_VARS} ./install.joinmarket-api.sh on" || true
+            
+        # Enable obwatcher at the end of setup_device.sh
 
         echo $JOININBOX_VERSION > $JOININBOX_VERSION_FILE
     fi
@@ -660,7 +718,6 @@ fi
 
 # Install Whirlpool
 WHIRLPOOL_UPGRADE_URL=https://code.samourai.io/whirlpool/whirlpool-client-cli/uploads/$WHIRLPOOL_UPLOAD_FILE_ID/whirlpool-client-cli-$WHIRLPOOL_VERSION-run.jar
-WHIRLPOOL_SIG_URL=https://code.samourai.io/whirlpool/whirlpool-client-cli/uploads/$WHIRLPOOL_UPLOAD_SIG_ID/whirlpool-client-cli-$WHIRLPOOL_VERSION-run.jar.sig.asc
 CURRENT=""
 if [ -f $WHIRLPOOL_VERSION_FILE ]; then
     CURRENT=$(cat $WHIRLPOOL_VERSION_FILE)
@@ -671,7 +728,6 @@ if [ "$CURRENT" != "$WHIRLPOOL_VERSION" ]; then
     sudo rm -rf *.jar
     sudo -u bitcoin wget -O whirlpool.jar $WHIRLPOOL_UPGRADE_URL
 
-    #wget -O whirlpool.asc $WHIRLPOOL_SIG_URL
     cp -f $TMP_INSTALL_PATH/usr/share/whirlpool/whirlpool.asc whirlpool.asc
     gpg --verify whirlpool.asc
 
@@ -699,7 +755,8 @@ if [ "$CURRENT" != "$RTL_VERSION" ]; then
     sudo -u bitcoin rm RTL.tar.gz
     sudo -u bitcoin mv RTL-* RTL
     cd RTL
-    sudo -u bitcoin NG_CLI_ANALYTICS=false npm install --only=production
+    sudo -u bitcoin NG_CLI_ANALYTICS=false npm install --only=production --legacy-peer-deps
+    sudo -u bitcoin npm install request --save
 
     echo $RTL_VERSION > $RTL_VERSION_FILE
 fi
@@ -722,36 +779,6 @@ if [ "$CURRENT" != "$BTCRPCEXPLORER_VERSION" ]; then
     sudo -u bitcoin npm install --only=production
 
     echo $BTCRPCEXPLORER_VERSION > $BTCRPCEXPLORER_VERSION_FILE
-fi
-
-
-# Install LNBits
-# Find URL by going to https://github.com/lnbits/lnbits/releases and finding the exact commit for the mynode tag
-LNBITS_UPGRADE_URL=https://github.com/lnbits/lnbits/archive/$LNBITS_VERSION.tar.gz
-CURRENT=""
-if [ -f $LNBITS_VERSION_FILE ]; then
-    CURRENT=$(cat $LNBITS_VERSION_FILE)
-fi
-if [ "$CURRENT" != "$LNBITS_VERSION" ]; then
-    cd /opt/mynode
-    rm -rf lnbits
-    sudo -u bitcoin wget $LNBITS_UPGRADE_URL -O lnbits.tar.gz
-    sudo -u bitcoin tar -xvf lnbits.tar.gz
-    sudo -u bitcoin rm lnbits.tar.gz
-    sudo -u bitcoin mv lnbits-* lnbits
-    cd lnbits
-
-    # Copy over config file
-    cp $TMP_INSTALL_PATH/usr/share/mynode/lnbits.env /opt/mynode/lnbits/.env
-    chown bitcoin:bitcoin /opt/mynode/lnbits/.env
-
-    # Install lnbits
-    sudo -u bitcoin python3 -m venv lnbits_venv
-    sudo -u bitcoin ./lnbits_venv/bin/pip install -r requirements.txt
-    sudo -u bitcoin ./lnbits_venv/bin/quart assets
-    #sudo -u bitcoin ./lnbits_venv/bin/quart migrate # Can't migrate since we don't have HDD in setup
-
-    echo $LNBITS_VERSION > $LNBITS_VERSION_FILE
 fi
 
 
@@ -795,7 +822,10 @@ if [ "$CURRENT" != "$THUNDERHUB_VERSION" ]; then
     sudo -u bitcoin mv thunderhub-* thunderhub
     cd thunderhub
 
-    sudo -u bitcoin npm install # --only=production # (can't build with only production)
+    # Patch versions
+    sed -i 's/\^5.3.5/5.3.3/g' package.json || true     # Fixes segfault with 5.3.5 on x86
+
+    sudo -u bitcoin npm install --legacy-peer-deps # --only=production # (can't build with only production)
     sudo -u bitcoin npm run build
     sudo -u bitcoin npx next telemetry disable
 
@@ -843,59 +873,19 @@ if [ ! -f /usr/bin/ngrok  ]; then
     cp ngrok /usr/bin/
 fi
 
-
-# Upgrade CKbunker
-CKBUNKER_UPGRADE_URL=https://github.com/Coldcard/ckbunker/archive/$CKBUNKER_VERSION.tar.gz
-CURRENT=""
-if [ -f $CKBUNKER_VERSION_FILE ]; then
-    CURRENT=$(cat $CKBUNKER_VERSION_FILE)
-fi
-if [ "$CURRENT" != "$CKBUNKER_VERSION" ]; then
-    cd /opt/mynode
-    sudo -u bitcoin wget $CKBUNKER_UPGRADE_URL -O ckbunker.tar.gz
-    sudo -u bitcoin tar -xvf ckbunker.tar.gz
-    sudo -u bitcoin rm ckbunker.tar.gz
-    sudo -u bitcoin mv ckbunker-* ckbunker
-    cd ckbunker
-
-    # Make venv
-    if [ ! -d env ]; then
-        sudo -u bitcoin python3 -m venv env
-    fi
-    source env/bin/activate
-    pip3 install -r requirements.txt
-    pip3 install --editable .
-    deactivate
-
-    echo $CKBUNKER_VERSION > $CKBUNKER_VERSION_FILE
-fi
-
-
-# Upgrade Sphinx Relay
-SPHINXRELAY_UPGRADE_URL=https://github.com/stakwork/sphinx-relay/archive/$SPHINXRELAY_VERSION.tar.gz
-CURRENT=""
-if [ -f $SPHINXRELAY_VERSION_FILE ]; then
-    CURRENT=$(cat $SPHINXRELAY_VERSION_FILE)
-fi
-if [ "$CURRENT" != "$SPHINXRELAY_VERSION" ]; then
-    cd /opt/mynode
-    rm -rf sphinxrelay
-    sudo -u bitcoin wget $SPHINXRELAY_UPGRADE_URL -O sphinx-relay.tar.gz
-    sudo -u bitcoin tar -xvf sphinx-relay.tar.gz
-    sudo -u bitcoin rm sphinx-relay.tar.gz
-    sudo -u bitcoin mv sphinx-relay-* sphinxrelay
-    cd sphinxrelay
-
-    sudo -u bitcoin npm install
-
-    echo $SPHINXRELAY_VERSION > $SPHINXRELAY_VERSION_FILE
-fi
+# Make sure "Remote Access" apps are marked installed
+touch /home/bitcoin/.mynode/install_tor
+touch /home/bitcoin/.mynode/install_premium_plus
+touch /home/bitcoin/.mynode/install_vpn
 
 # Mark docker images for install (on SD so install occurs after drive attach)
 touch /home/bitcoin/.mynode/install_mempool
 touch /home/bitcoin/.mynode/install_btcpayserver
 touch /home/bitcoin/.mynode/install_dojo
 
+# SKIPPING LNBITS - OPTIONAL ALL
+# SKIPPING CKBUNKER - OPTIONAL APP
+# SKIPPING SPHINX - OPTIONAL APP
 # SKIPPING BOS - OPTIONAL APP
 # SKIPPING PYBLOCK - OPTIONAL APP
 # SKIPPING WARDEN - OPTIONAL APP
@@ -915,6 +905,13 @@ sync
 sleep 1
 
 
+# Mark dynamic applications as defalt application
+# ... (none yet)
+
+# Upgrade Dyanmic Applications (must be done after file installation)
+# mynode-manage-apps upgrade # not yet working during setup process
+
+
 # Enable fan control
 if [ $IS_ROCKPRO64 = 1 ]; then
     systemctl enable fan_control
@@ -930,6 +927,7 @@ apt-get clean
 # Setup myNode Startup Script
 systemctl daemon-reload
 systemctl enable check_in
+systemctl enable premium_plus_connect
 systemctl enable background
 systemctl enable docker
 systemctl enable mynode
@@ -954,9 +952,9 @@ systemctl enable redis-server
 #systemctl enable electrs # DISABLED BY DEFAULT
 #systemctl enable lndhub # DISABLED BY DEFAULT
 #systemctl enable btcrpcexplorer # DISABLED BY DEFAULT
-systemctl enable tls_proxy
 systemctl enable rtl
 systemctl enable tor
+systemctl enable i2pd
 systemctl enable invalid_block_check
 systemctl enable usb_driver_check
 systemctl enable docker_images
@@ -966,6 +964,7 @@ systemctl enable webssh2
 systemctl enable rotate_logs
 systemctl enable corsproxy_btcrpc
 systemctl enable usb_extras
+systemctl enable ob-watcher
 
 
 # Disable services
@@ -985,6 +984,14 @@ rm -rf /tmp/*
 rm -rf ~/setup_device.sh
 rm -rf /etc/motd # Remove simple motd for update-motd.d
 
+# Remove default debian stuff
+deluser mynode || true
+rm -rf /home/mynode || true
+
+# Remove default Pi stuff
+deluser pi || true
+rm -rf /home/pi || true
+
 # Regenerate MAC address for some Armbian devices
 if [ $IS_ROCK64 = 1 ] || [ $IS_ROCKPRO64 = 1 ] ; then
     . /usr/lib/armbian/armbian-common
@@ -993,6 +1000,18 @@ if [ $IS_ROCK64 = 1 ] || [ $IS_ROCKPRO64 = 1 ] ; then
     get_random_mac
     nmcli connection modify $UUID ethernet.cloned-mac-address $MACADDR
     nmcli connection modify $UUID -ethernet.mac-address ""
+fi
+
+# Add fsck force to startup for x86
+if [ $IS_X86 = 1 ]; then
+    sed -i "s/GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"quiet fsck.mode=force fsck.repair=yes\"/g" /etc/default/grub
+    update-grub
+fi
+
+# Add generic boot option if UEFI
+if [ -f /boot/efi/EFI/debian/grubx64.efi ]; then
+    mkdir -p /boot/efi/EFI/BOOT
+    cp -f /boot/efi/EFI/debian/grubx64.efi /boot/efi/EFI/BOOT/bootx64.efi
 fi
 
 sync

@@ -1,20 +1,23 @@
 
 from config import *
-from flask import Flask, render_template, Markup, send_from_directory, redirect, request, url_for
+from flask import Flask, render_template, Markup, redirect, request, url_for
 from user_management import *
 from api import mynode_api
 from bitcoin import mynode_bitcoin
 from whirlpool import mynode_whirlpool
 from dojo import mynode_dojo
-from joininbox import mynode_joininbox
+from joinmarket import mynode_joinmarket
 from caravan import mynode_caravan
 from sphinxrelay import mynode_sphinxrelay
 from pyblock import mynode_pyblock
 from bos import mynode_bos
 from wardenterminal import mynode_wardenterminal
 from lndmanage import mynode_lndmanage
+from generic_app import mynode_generic_app
 from manage_apps import mynode_manage_apps
+from marketplace import mynode_marketplace
 from usb_extras import mynode_usb_extras
+from premium_plus import mynode_premium_plus
 from tor import mynode_tor
 from vpn import mynode_vpn
 from electrum_server import *
@@ -30,10 +33,13 @@ from messages import get_message
 from thread_functions import *
 from datetime import timedelta
 from device_info import *
+from drive_info import *
 from device_warnings import *
 from systemctl_info import *
 from application_info import *
 from price_info import *
+from utilities import *
+import importlib
 import pam
 import re
 import json
@@ -87,7 +93,7 @@ app.register_blueprint(mynode_lnd)
 app.register_blueprint(mynode_api)
 app.register_blueprint(mynode_whirlpool)
 app.register_blueprint(mynode_dojo)
-app.register_blueprint(mynode_joininbox)
+app.register_blueprint(mynode_joinmarket)
 app.register_blueprint(mynode_caravan)
 app.register_blueprint(mynode_sphinxrelay)
 app.register_blueprint(mynode_pyblock)
@@ -95,11 +101,15 @@ app.register_blueprint(mynode_bos)
 app.register_blueprint(mynode_wardenterminal)
 app.register_blueprint(mynode_lndmanage)
 app.register_blueprint(mynode_manage_apps)
+app.register_blueprint(mynode_marketplace)
+app.register_blueprint(mynode_generic_app)
 app.register_blueprint(mynode_tor)
+app.register_blueprint(mynode_premium_plus)
 app.register_blueprint(mynode_electrum_server)
 app.register_blueprint(mynode_vpn)
 app.register_blueprint(mynode_usb_extras)
 app.register_blueprint(mynode_settings)
+
 
 ### Definitions
 MYNODE_DIR =    "/mnt/hdd/mynode"
@@ -129,14 +139,14 @@ def index():
     bitcoin_block_height = get_bitcoin_block_height()
     mynode_block_height = get_mynode_block_height()
     uptime_in_seconds = get_system_uptime_in_seconds()
-    pk_skipped = skipped_product_key()
-    pk_error = not is_valid_product_key()
+    product_key_skipped = skipped_product_key()
+    product_key_error = not is_valid_product_key()
 
     # Show uploader page if we are marked as an uploader
     if is_uploader():
         status=""
         try:
-            status = subprocess.check_output(["mynode-get-quicksync-status"])
+            status = to_string(subprocess.check_output(["mynode-get-quicksync-status"]))
         except:
             status = "Waiting on quicksync to start..."
 
@@ -205,7 +215,8 @@ def index():
         return render_template('state.html', **templateData)
     elif status == STATE_DRIVE_CONFIRM_FORMAT:
         if request.args.get('format'):
-            os.system("touch /tmp/format_ok")
+            touch("/tmp/format_ok")
+            os.system("rm -f /home/bitcoin/.mynode/force_format_prompt")
             time.sleep(1)
             return redirect("/")
 
@@ -230,6 +241,12 @@ def index():
             "ui_settings": read_ui_settings()
         }
         return render_template('state.html', **templateData)
+    elif status == STATE_CHOOSE_NETWORK:
+        templateData = {
+            "title": "myNode Choose Network",
+            "ui_settings": read_ui_settings()
+        }
+        return render_template('choose_network.html', **templateData)
     elif status == STATE_DOCKER_RESET:
         templateData = {
             "title": "myNode",
@@ -255,6 +272,8 @@ def index():
         return render_template('state.html', **templateData)
     elif status == STATE_DRIVE_CLONE:
         clone_state = get_clone_state()
+        log_message("CLONE_STATE")
+        log_message(clone_state)
         if clone_state == CLONE_STATE_DETECTING:
             templateData = {
                 "title": "myNode Clone Tool",
@@ -291,11 +310,11 @@ def index():
         elif clone_state == CLONE_STATE_NEED_CONFIRM:
             # Clone was confirmed
             if request.args.get('clone_confirm'):
-                os.system("touch /tmp/.clone_confirm")
+                touch("/tmp/.clone_confirm")
                 time.sleep(3)
                 return redirect("/")
             if request.args.get('clone_rescan'):
-                os.system("touch /tmp/.clone_rescan")
+                touch("/tmp/.clone_rescan")
                 time.sleep(3)
                 return redirect("/")
 
@@ -352,8 +371,8 @@ def index():
         return redirect("/product-key")
     elif status == STATE_QUICKSYNC_COPY:
         try:
-            current = subprocess.check_output(["du","-m","--max-depth=0","/mnt/hdd/mynode/bitcoin/"]).split()[0]
-            total = subprocess.check_output(["du","-m","--max-depth=0","/mnt/hdd/mynode/quicksync/"]).split()[0]
+            current = to_string(subprocess.check_output(["du","-m","--max-depth=0","/mnt/hdd/mynode/bitcoin/"]).split()[0])
+            total = to_string(subprocess.check_output(["du","-m","--max-depth=0","/mnt/hdd/mynode/quicksync/"]).split()[0])
         except:
             current = 0.0
             total = 100.0
@@ -417,14 +436,7 @@ def index():
         }
         return render_template('state.html', **templateData)
     elif status == STATE_SHUTTING_DOWN or is_shutting_down():
-        templateData = {
-            "title": "myNode Reboot",
-            "header_text": "Restarting",
-            "subheader_text": "This will take several minutes...",
-            "refresh_rate": 120,
-            "ui_settings": read_ui_settings()
-        }
-        return render_template('state.html', **templateData)
+        return redirect("/rebooting")
     elif status == STATE_STABLE:
         bitcoin_status_code = get_service_status_code("bitcoin")
         bitcoin_status_color = "red"
@@ -444,7 +456,7 @@ def index():
                 "title": "myNode Status",
                 "header_text": "Starting...",
                 "subheader_text": Markup("Launching myNode Services{}".format(message)),
-                "error_message": error_message,
+                "error_message": Markup(error_message + "<br/><br/>"),
                 "ui_settings": read_ui_settings()
             }
             return render_template('state.html', **templateData)
@@ -471,6 +483,7 @@ def index():
                 "header_text": "Bitcoin Blockchain",
                 "bitcoin_block_height": bitcoin_block_height,
                 "mynode_block_height": mynode_block_height,
+                "progress": get_bitcoin_sync_progress(),
                 "message": get_message(include_funny=True),
                 "ui_settings": read_ui_settings()
             }
@@ -522,7 +535,7 @@ def index():
             "current_block": current_block,
             "bitcoin_peer_count": get_bitcoin_peer_count(),
             "bitcoin_difficulty": get_bitcoin_difficulty(),
-            "bitcoin_mempool_size": get_bitcoin_mempool_size(),
+            "bitcoin_mempool_size": get_bitcoin_mempool_info()["display_bytes"],
             "bitcoin_version": get_bitcoin_version(),
             "lnd_status_color": lnd_status_color,
             "lnd_status": Markup(lnd_status),
@@ -544,8 +557,12 @@ def index():
             "is_testnet_enabled": is_testnet_enabled(),
             "is_installing_docker_images": is_installing_docker_images(),
             "is_device_from_reseller": is_device_from_reseller(),
-            "product_key_skipped": pk_skipped,
-            "product_key_error": pk_error,
+            "is_expiration_warning_dismissed": is_expiration_warning_dismissed(),
+            "check_in_data": get_check_in_data(),
+            "product_key_skipped": product_key_skipped,
+            "product_key_error": product_key_error,
+            "premium_plus_has_access_token": has_premium_plus_token(),
+            "premium_plus_is_connected": get_premium_plus_is_connected(),
             "fsck_error": has_fsck_error(),
             "fsck_results": get_fsck_results(),
             "sd_rw_error": has_sd_rw_error(),
@@ -553,6 +570,7 @@ def index():
             "os_drive_usage": os_drive_usage,
             "low_drive_space_error": low_drive_space_error,
             "low_os_drive_space_error": low_os_drive_space_error,
+            "usb_error": has_usb_error(),
             "is_quicksync_disabled": not is_quicksync_enabled(),
             "usb_extras": get_usb_extras(),
             "cpu_usage": get_cpu_usage(),
@@ -560,7 +578,7 @@ def index():
             "swap_usage": get_swap_usage(),
             "device_temp": get_device_temp(),
             "upgrade_available": upgrade_available,
-            "hide_password_warning": hide_password_warning(),
+            "hide_password_warning": settings_file_exists("hide_password_warning"),
             "has_changed_password": has_changed_password(),
             "ui_settings": read_ui_settings()
         }
@@ -611,7 +629,7 @@ def page_product_key():
 
             save_product_key(product_key)
 
-            t = Timer(10.0, check_in)
+            t = Timer(1.0, restart_check_in)
             t.start()
 
             return redirect("/")
@@ -630,28 +648,38 @@ def page_ignore_warning():
 def page_toggle_app():
     check_logged_in()
 
+    return_page = "/"
+    if request.args.get("return_page"):
+        return_page = request.args.get("return_page")
+
     # Check application specified
     if not request.args.get("app"):
         flash("No application specified", category="error")
-        return redirect("/")
+        return redirect(return_page)
     
     # Check application name is valid
     app_short_name = request.args.get("app")
     if not is_application_valid(app_short_name):
         flash("Application is invalid", category="error")
-        return redirect("/")
+        return redirect(return_page)
 
     # Toggle enabled/disabled
     if is_service_enabled(app_short_name):
         disable_service(app_short_name)
     else:
         enable_service(app_short_name)
-    return redirect("/")
+    return redirect(return_page)
 
 @app.route("/clear-fsck-error")
 def page_clear_fsck_error():
     check_logged_in()
     clear_fsck_error()
+    return redirect("/")
+
+@app.route("/dismiss-expiration-warning")
+def page_dismiss_expiration_warning():
+    check_logged_in()
+    dismiss_expiration_warning()
     return redirect("/")
 
 @app.route("/login", methods=["GET","POST"])
@@ -686,6 +714,19 @@ def page_help():
     check_logged_in()
     templateData = {"ui_settings": read_ui_settings()}
     return render_template('help.html', **templateData)
+
+@app.route("/rebooting")
+def page_rebooting():
+    check_logged_in()
+    
+    # Show that device is rebooting and use JS to refresh once back online
+    templateData = {
+        "title": "myNode Reboot",
+        "header_text": "Restarting",
+        "subheader_text": "This will take several minutes...",
+        "ui_settings": read_ui_settings()
+    }
+    return render_template('reboot.html', **templateData)
 
 ## Error handlers
 @app.errorhandler(404)
@@ -724,8 +765,12 @@ def before_request():
 # Disable browser caching
 @app.after_request
 def set_response_headers(response):
-    # Prevents 301 from saving forever
-    response.headers['Cache-Control'] = 'no-store'
+    # Cache OK responses for 24 hrs
+    if response.status_code in [200]:
+        response.headers['Cache-Control'] = 'max-age=86400, private'
+    else:
+        # Prevents 301 from saving forever
+        response.headers['Cache-Control'] = 'no-store'
 
     # No Caching
     #response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
@@ -759,7 +804,7 @@ def start_threads():
     lnd_thread = BackgroundThread(update_lnd_info_thread, 60)
     lnd_thread.start()
     threads.append(lnd_thread)
-    price_thread = BackgroundThread(update_price_info_thread, 2) # 2 minutes
+    price_thread = BackgroundThread(update_price_info_thread, 30)
     price_thread.start()
     threads.append(price_thread)
     drive_thread = BackgroundThread(update_device_info, 60)
@@ -771,6 +816,9 @@ def start_threads():
     dmesg_thread = BackgroundThread(monitor_dmesg, 60) # Runs forever, restart after 60 if it fails 
     dmesg_thread.start()
     threads.append(dmesg_thread)
+    app_data_cache_thread = BackgroundThread(update_application_json_cache, 300)
+    app_data_cache_thread.start()
+    threads.append(app_data_cache_thread)
 
     app.logger.info("STARTED {} THREADS".format(len(threads)))
 
@@ -807,6 +855,9 @@ if __name__ == "__main__":
 
     # Setup and start threads
     start_threads()
+
+    # Register blueprints for dynamic apps
+    register_dynamic_app_flask_blueprints(app)
 
     try:
         app.run(host='0.0.0.0', port=80)

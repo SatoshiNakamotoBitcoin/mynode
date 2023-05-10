@@ -4,26 +4,23 @@
 [![Community Chat](https://img.shields.io/badge/community%20chat-telegram-blue)](https://t.me/mynode_btc)
 
 [![Twitter](https://img.shields.io/twitter/follow/mynodebtc?style=social)](https://twitter.com/mynodebtc)
-[![Reddit](https://img.shields.io/reddit/subreddit-subscribers/mynode?label=Subscribe%20%2Fr%2Fmynodebtc&style=social)](https://reddit.com/r/mynodebtc)
 
 
-# myNode
-The easiest way to run Bitcoin and Lightning!
-
-myNode aims to be the easiest way to run a dedicated, easy to use, Bitcoin Node and Lightning Wallet! By combining the best open source software with our UI, management, and monitoring software, you can easily, safely, and securely use Bitcoin and Lightning.
+# Bitcoin, Lightning, and more!
+myNode aims to be the easiest way to run a dedicated, easy to use, Bitcoin Node and Lightning Wallet!
+                            
+We combine the best open source software with our interface, management, and support so you can easily, privately, and securely use Bitcoin and Lightning.
 
 Website: https://mynodebtc.com
 
 
 ## User Interface
-<img src="images/1.png" width="800">
+<img src="images/ui_dual_mode.png" width="600">
 
 ## Overview
-myNode aims to be the easiest way to run a dedicated, easy to use, Bitcoin Node and Lightning Wallet! By combining the best open source software with our UI, management, and monitoring software, you can easily, safely, and securely use Bitcoin and Lightning.
+myNode is a platform that provides uptime, reliability, ease-of-use and a huge variety of applications! By integrating a number of Bitcoin-related open source projects, it provides access to Bitcoin and Lightning along with a number of other features.
 
-myNode is a software that integrates a number of Bitcoin related open source projects and provides access to the Bitcoin and Lightning networks along with a number of other features! By using a dedicated device, like myNode 1, you get uptime, reliability, and ease-of-use that other software-only solutions cannot provide.
-
-By running a Bitcoin node and Lightning on your myNode device, you maintain all the security and advantages originally intended in the Bitcoin protocol. Information about your Bitcoin addresses and spending is verified by your local node and removes the need to trust online 3rd parties for getting information about your funds.
+By running Bitcoin and Lightning on your myNode device, you maintain all the security and privacy originally intended in the Bitcoin protocol. Your transactions are verified by your local node, removing the need to trust online 3rd parties for spending or verifying funds.
 
 ## myNode Premium
 myNode offers premium support, simplified upgrades and more! If you are running myNode Community Edition and want one-click upgrades or you want to purchase a supported, high quality device, please visit mynodebtc.com.
@@ -36,8 +33,10 @@ https://mynodebtc.com/order_now
 <img src="images/device.png" width="300">
 
 ## Features
-Each myNode device comes with a number of wonderful features:
+Each myNode device comes with a number of wonderful features.
 
+<img src="images/app_icons.png" width="600">
+<!--
 - Bitcoin Node
 - Lightning Node
 - Electrum Server
@@ -71,17 +70,7 @@ Each myNode device comes with a number of wonderful features:
 - Simple UI / Web Interface
 - Dark Mode interface
 - Dedicated hardware keeps you constantly and securely connected!
-
-## Supported Devices
-We currently support images for the following devices:
- - Raspberry Pi 4
- - RockPro64
- - Virtual Machine Support (VirtualBox hosting Windows/OS X/Linux/Solaris, VMWare hosting Windows/OS X/Linux)
-
-## Deprecated Devices
-Due to limited RAM and CPU power, following devices are no longer recommended for use. Performance may be poor.
-- Raspberry Pi 3
-- Rock64
+-->
 
 ## Running myNode
 You can run myNode on your own device in just a few easy steps!
@@ -92,70 +81,50 @@ You can run myNode on your own device in just a few easy steps!
     * Download [Etcher](https://www.balena.io/etcher/)
     * Flash Downloaded Image
 3. Insert SD Card, connect ethernet cable to router, and Boot your Device
-4. Attach External HD to Device
+4. Attach External Drive to Device
     * 1TB+ Required
 5. Visit http://mynode.local/ or http://ip_of_device/
 
-## Developing for myNode
-Once you are running myNode, you can easily modify and update the software yourself!
-
-1. Start by running myNode on your device via the instructions above in "Running myNode"
-2. Modify myNode files
-    * Clone this git repo on your PC or laptop - `git clone https://github.com/mynodebtc/mynode.git`
-    * Make your modifications
-3. Run `make rootfs`
-    * Or run `make rootfs_auto` in a new console tab
-    * This will automatically create artifacts as local files are modified
-4. Run 'make start_file_server'
-    * This will run a local HTTP server so your device can download files
-5. On your device, run `sudo mynode-local-upgrade [dev pc ip address]`
-    * This will download your locally generated artifact and install it on your device
-    * Your device will automatically reboot to ensure updates take effect
-6. Test your changes!
-7. Submit Pull Request to share your updates!
-
-### To update a subsystem without rebooting
-Add another argument to the local upgrade script:
-- To update files only, run `sudo mynode-local-upgrade [dev pc ip address] files`
-- To update files and restart web server, run `sudo mynode-local-upgrade [dev pc ip address] www`
-
+## Supported Devices
+We currently have images for the following devices available for download.
+ - Raspberry Pi 4
+ - RockPro64
+ - Rock Pi 4
+ - PCs and Servers
+ - Virtual Machine Support (VirtualBox, VMWare)
 
 ## Upgrading your myNode
-Once you are running myNode, you can easily update the software yourself!
+Once you are running myNode, you can easily [update the software](https://mynodebtc.github.io/device/upgrading-device.html) yourself!
 
-1. Start by running myNode on your device via the instructions above in "Running myNode"
-2. Open 2 Terminal windows:
-    * 1 Terminal: Local PC or laptop
-    * 1 Terminal: ssh into your myNode device
-      * Command: `ssh admin@[myNode ip address]`
-      * Default credentials: admin/bolt
-3. Clone the latest release from the git repo on your PC or laptop
-    * Run `git clone https://github.com/mynodebtc/mynode.git`
-    * Run `cd mynode`
-    * Run `git checkout tags/latest_release`
-4. Run `make rootfs`
-5. Run `make start_file_server`
-    * This will run a local HTTP server so your device can download files
-6. On your device, run `sudo mynode-local-upgrade [dev pc ip address]`
-    * This will download your locally generated artifact and install it on your device
-    * Your device will automatically reboot to ensure updates take effect
-7. Optional: Run `make stop_file_server`
-    * This will stop the local HTTP server
-8. You are now running the latest version of myNode software!
 
-## Convert new device to run myNode
-1. Run make command for your device. Ex:
-    * `make setup_new_rock64`
-    * `make setup_new_rockpro64`
-    * `make setup_new_raspi3`
-    * `make setup_new_raspi4`
-    * `make setup_new_debian`
-    * `make setup_new_other`
-3. Follow Instructions
-2. Reboot Device
-4. Congratulations! You're running a new myNode device!
+## Developing for myNode
+
+### Developing the myNode Platform
+See the [development guide](https://github.com/mynodebtc/mynode/blob/master/doc/development.md).
+
+### Adding new Applications to myNode
+To develop and add new applications to mynode, check out the [Software Development Kit (SDK)](https://github.com/mynodebtc/mynode_sdk).
+
+
+## Install on Existing System (beta)
+To setup a new device on a supported platform that is already running Linux (Raspi4, RockPi 4, RockPro64, PC, ...), you can run two simple commands.
+
+First, install a debian-based operating system.
+
+Second, login and run these two commands.
+
+```
+wget https://raw.githubusercontent.com/mynodebtc/mynode/master/setup/setup_device.sh -O mynode_setup.sh
+sudo bash ./mynode_setup.sh online
+```
+
+Once the script successfully completed, reboot and you will be running myNode!
 
 ## Screenshots
+<img src="images/ui.png" width="600">
+
+--------------------
+
 <img src="images/2.png" width="600">
 
 --------------------
@@ -164,7 +133,7 @@ Once you are running myNode, you can easily update the software yourself!
 
 --------------------
 
-<img src="images/5.png" width="600">
+<img src="images/marketplace.png" width="600">
 
 --------------------
 
@@ -202,6 +171,11 @@ myNode has a wonderful, helpful community that assists with development and supp
 It takes a lot of work to add new features and maintain myNode. In order to provide desired features, improve documentation, and help provide the best product possible, some new features and improvements have bounties associsated with them. If anyone in the community would like to implement improvements, they can claim the bounty.
 
 [Bounty List](https://github.com/mynodebtc/mynode/blob/master/doc/bounties.md)
+
+## License
+The primary myNode License is a variation of CC BY-NC-ND 4.0 with some modifications in Section 9.
+
+This license applies to the myNode platform, but each application likely has its own license and code to integrate each application to myNode uses the LGPL v3.0. Code to add applications can be stored under `./rootfs/standard/usr/share/mynode_apps/` and uses the License file at `./rootfs/standard/usr/share/mynode_apps/LICENSE.md`.
 
 ## Responsible Disclosure
 Found any critical bugs or vulnerabilities? Please send us an email at admin@mynodebtc.com. Thanks!

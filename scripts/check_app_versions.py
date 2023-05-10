@@ -16,12 +16,13 @@ apps = [{"name": "bitcoin/bitcoin",                         "current_version_var
         {"name": "BlueWallet/LndHub",                       "current_version_variable": "LNDHUB_VERSION"},
         {"name": "btcpayserver/btcpayserver",               "current_version_variable": "BTCPAYSERVER_VERSION"},
         {"name": "openoms/joininbox",                       "current_version_variable": "JOININBOX_VERSION"},
+        {"name": "joinmarket-webui/jam",                    "dynamic_app_name":         "jam"},
         {"name": "unchained-capital/caravan",               "current_version_variable": "CARAVAN_VERSION"},
         {"name": "cryptoadvance/specter-desktop",           "current_version_variable": "SPECTER_VERSION"},
         {"name": "Coldcard/ckbunker",                       "current_version_variable": "CKBUNKER_VERSION"},
         {"name": "alexbosworth/balanceofsatoshis",          "current_version_variable": "BOS_VERSION"},
         {"name": "bitromortac/lndmanage",                   "current_version_variable": "LNDMANAGE_VERSION"},
-        {"name": "lnbits/lnbits",                           "current_version":          "bcecf6d"},
+        {"name": "lnbits/lnbits",                           "current_version_variable": "LNBITS_VERSION"},
         {"name": "pxsocs/warden_terminal",                  "current_version":          "64e5db1"},
         {"name": "apotdevin/thunderhub",                    "current_version_variable": "THUNDERHUB_VERSION"},
         {"name": "stakwork/sphinx-relay",                   "current_version_variable": "SPHINXRELAY_VERSION"},
@@ -29,6 +30,8 @@ apps = [{"name": "bitcoin/bitcoin",                         "current_version_var
         {"name": "dojo/samourai-dojo",                      "current_version_variable": "DOJO_VERSION"},
         #{"name": "JoinMarket-Org/joinmarket-clientserver",  "current_version_variable": "JOINMARKET_VERSION"}, # Old, now use within joininbox
         {"name": "curly60e/pyblock",                        "current_version_variable": "PYBLOCK_VERSION"},
+        {"name": "cryptosharks131/lndg",                    "dynamic_app_name":         "lndg"},
+        {"name": "Lily-Technologies/lily-wallet",           "dynamic_app_name":         "lilywallet"},
 ]
 
 # Apps that don't work or are not on GitHub
@@ -55,6 +58,17 @@ def get_current_version_from_variable(version_variable):
     except:
         return "UNKNOWN FAIL"
     return "UNKNOWN " + version_variable
+
+def get_current_version_from_dynamic_app(app_name):
+    try:
+        filename = "../rootfs/standard/usr/share/mynode_apps/{}/{}.json".format(app_name, app_name)
+        with open(filename, "r") as f:
+            json_data = json.load(f)
+            if "latest_version" in json_data:
+                return json_data["latest_version"]
+    except:
+        return "UNKNOWN FAIL 1"
+    return "UNKNOWN FAIL 2"
 
 def get_app_version_data(app_name, current_version):
     success = False
@@ -111,6 +125,8 @@ def check_app_versions():
         current_version = "UNKNOWN"
         if "current_version_variable" in app:
             current_version = get_current_version_from_variable(app["current_version_variable"])
+        elif "dynamic_app_name" in app:
+            current_version = get_current_version_from_dynamic_app(app["dynamic_app_name"])
         else:
             current_version = app["current_version"]
 

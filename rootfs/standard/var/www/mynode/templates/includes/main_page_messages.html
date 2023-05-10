@@ -1,3 +1,10 @@
+{% if product_key_skipped %}
+<div class="main_page_warning_block">
+    <p style="text-align: center;"><b>Community Edition</b></p>
+    <p style="text-align: center;">You are currently using Community Edition. <a target="_blank" href="https://mynodebtc.com/order/premium">Upgrade now</a> or <a href="/product-key">add a key</a> for more features and support!</p>
+</div>
+{% endif %}
+
 {% if fsck_error %}
 <div class="main_page_error_block">
     <p style="text-align: center;"><b>Warning!</b></p>
@@ -48,12 +55,60 @@
 -->
 {% endif %}
 
+{% if usb_error %}
+<div class="main_page_error_block">
+    <center>
+    <p><b>USB Error Detected</b></p>
+    <p>Your device has detected several read/write issues. Your USB->SATA adapter may be having issues or it may be a bad USB cable. View the Linux log on the <a href="/status">status</a> page for more details.</p>
+    <a href="/settings/clear-usb-error" class="ui-button ui-widget ui-corner-all settings_button_small">OK</a>
+    </center>
+</div>
+{% endif %}
+
 {% if not has_changed_password and not hide_password_warning %}
 <div class="main_page_warning_block">
     <p style="text-align: center;"><b>Warning!</b></p>
     <p style="text-align: center;">You appear to be using the default password! You should change it to
          something else on the <a href="/settings">settings</a> page.</p>
 </div>
+{% endif %}
+
+{% if not is_expiration_warning_dismissed and check_in_data %}
+    {% set showing_expiration_warning = False %}
+    {% if check_in_data.premium_plus is defined and check_in_data.premium_plus.active is defined and check_in_data.premium_plus.days_remaining is defined %}
+        {% if not showing_expiration_warning and check_in_data.premium_plus.days_remaining|int <= 45 and check_in_data.premium_plus.days_remaining|int >= -45 %}
+            {% set showing_expiration_warning = True %}
+            <div class="main_page_warning_block">
+                <p style="text-align: center;"><b>Warning!</b></p>
+                {% if check_in_data.premium_plus.active %}
+                    <p style="text-align: center;">Your Premium+ subscription will expire in {{check_in_data.premium_plus.days_remaining}} days! It can easily be extended via the button below.</p>
+                {% else %}
+                    <p style="text-align: center;">Your Premium+ subscription expired {{check_in_data.premium_plus.days_remaining|int|abs}} days ago! It can easily be extended via the button below.</p>
+                {% endif %}
+                <p style="text-align: center;">
+                    <a href="https://mynodebtc.com/order/premium_plus" target="_blank" style="margin: 5px;" class="ui-button ui-widget ui-corner-all settings_button_small">Extend</a>
+                    <a href="/dismiss-expiration-warning" style="margin: 5px;" class="ui-button ui-widget ui-corner-all settings_button_small">Dismiss</a>
+                </p>
+            </div>
+        {% endif %}
+    {% endif %}
+    {% if not showing_expiration_warning and check_in_data.support is defined and check_in_data.support.active is defined and check_in_data.support.days_remaining is defined %}
+        {% if check_in_data.support.days_remaining|int <= 45 and check_in_data.support.days_remaining|int >= -45 %}
+            {% set showing_expiration_warning = True %}
+            <div class="main_page_warning_block">
+                <p style="text-align: center;"><b>Warning!</b></p>
+                {% if check_in_data.support.active %}
+                    <p style="text-align: center;">Your support subscription will expire in {{check_in_data.support.days_remaining}} days! It can easily be extended via the button below.</p>
+                {% else %}
+                    <p style="text-align: center;">Your support subscription expired {{check_in_data.support.days_remaining|int|abs}} days ago! It can easily be extended via the button below.</p>
+                {% endif %}
+                <p style="text-align: center;">
+                    <a href="https://mynodebtc.com/order/premium_plus" target="_blank" style="margin: 5px;" class="ui-button ui-widget ui-corner-all settings_button_small">Extend</a>
+                    <a href="/dismiss-expiration-warning" style="margin: 5px;" class="ui-button ui-widget ui-corner-all settings_button_small">Dismiss</a>
+                </p>
+            </div>
+        {% endif %}
+    {% endif %}
 {% endif %}
 
 <!-- Make sure blocks are syncing, otherwise on startup block 0 may show halving -->

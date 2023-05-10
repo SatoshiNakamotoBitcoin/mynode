@@ -54,8 +54,8 @@
 
     <body>
         {% include 'includes/logo_header.html' %}
-        <div class="mynode_back_div">
-            <a class="ui-button ui-widget ui-corner-all mynode_back" href="/"><span class="ui-icon ui-icon-home"></span>home&nbsp;</a>
+        <div class="mynode_top_left_div">
+            <a href="/"><img class="mynode_nav_icon" src="{{ url_for('static', filename="images/home.png")}}"/></a>
         </div>
 
         {% include 'includes/message_display.html' %}
@@ -66,11 +66,11 @@
         <div class="app_tile_row">
             <div class="info_tile">
                 <div class="info_tile_header">Bitcoin</div>
-                <div class="info_tile_contents">Tor Enabled</div>
+                <div class="info_tile_contents">{% if is_btc_tor_enabled %}Tor Enabled{% else %}Tor Disabled{%endif%}</div>
             </div>
             <div class="info_tile">
                 <div class="info_tile_header">Lightning</div>
-                <div class="info_tile_contents">Tor Enabled</div>
+                <div class="info_tile_contents">{% if is_lnd_tor_enabled %}Tor Enabled{% else %}Tor Disabled{%endif%}</div>
             </div>
             <div class="info_tile">
                 <div class="info_tile_header">Version</div>
@@ -132,7 +132,7 @@
         <div class="app_tile_row">
             <div class="app_tile_short">
                 <div class="app_status_icon"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/fully_noded_logo.png")}}"/></div>
+                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/app_icons/fully_noded.png")}}"/></div>
                 <div class="app_title">Fully Noded</div>
                 <div class="app_status"></div>
                 <div class="app_contents">

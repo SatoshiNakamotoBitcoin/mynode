@@ -4,79 +4,36 @@ import requests
 import time
 import subprocess
 import random
+import json
+import logging
+import argparse
+from systemd import journal
+from utilities import *
+from drive_info import *
+from device_info import *
 
 CHECKIN_URL = "https://www.mynodebtc.com/device_api/check_in.php"
+
+log = logging.getLogger('check_in')
+log.addHandler(journal.JournaldLogHandler())
+log.setLevel(logging.INFO)
+set_logger(log)
 
 latest_version_check_count = 0
 
 # Helper functions
-def unset_skipped_product_key():
-    os.system("rm -rf /home/bitcoin/.mynode/.product_key_skipped")
-    os.system("rm -rf /mnt/hdd/mynode/settings/.product_key_skipped")
-def delete_product_key_error():
-    os.system("rm -rf /home/bitcoin/.mynode/.product_key_error")
-    os.system("rm -rf /mnt/hdd/mynode/settings/.product_key_error")
-def has_product_key_error():
-    if os.path.isfile("/home/bitcoin/.mynode/.product_key_error") or os.path.isfile("/mnt/hdd/mynode/settings/.product_key_error"):
-        return True
-    return False
-def get_current_version():
-    current_version = "0.0"
+def clear_response_data():
+    os.system("rm -f /tmp/check_in_response.json")
+def save_response_data(data):
     try:
-        with open("/usr/share/mynode/version", "r") as f:
-            current_version = f.read().strip()
-    except:
-        current_version = "error"
-    return current_version
-def get_device_type():
-    device = subprocess.check_output("mynode-get-device-type", shell=True).decode("utf-8").strip()
-    return device
-def get_device_arch():
-    arch = subprocess.check_output("uname -m", shell=True).decode("utf-8").strip()
-    return arch
-def get_device_serial():
-    serial = subprocess.check_output("mynode-get-device-serial", shell=True).decode("utf-8").strip()
-    return serial
-def skipped_product_key():
-    return os.path.isfile("/home/bitcoin/.mynode/.product_key_skipped") or \
-           os.path.isfile("/mnt/hdd/mynode/settings/.product_key_skipped")
-def has_product_key():
-    return os.path.isfile("/home/bitcoin/.mynode/.product_key")
-def get_product_key():
-    product_key = "no_product_key"
-    if skipped_product_key():
-        return "community_edition"
-
-    if not has_product_key():
-        return "product_key_missing"
-
-    try:
-        with open("/home/bitcoin/.mynode/.product_key", "r") as f:
-            product_key = f.read().strip()
-    except:
-        product_key = "product_key_error"
-    return product_key
-def is_drive_mounted():
-    mounted = True
-    try:
-        # Command fails and throws exception if not mounted
-        output = subprocess.check_output(f"grep -qs '/mnt/hdd ext4' /proc/mounts", shell=True).decode("utf-8") 
-    except:
-        mounted = False
-    return mounted
-def get_drive_size():
-    size = -1
-    if not is_drive_mounted():
-        return -3
-    try:
-        size = subprocess.check_output("df /mnt/hdd | grep /dev | awk '{print $2}'", shell=True).strip()
-        size = int(size) / 1000 / 1000
+        with open("/tmp/check_in_response.json", "w") as file:
+            json.dump(data, file, indent=4, sort_keys=True)
     except Exception as e:
-        size = -2
-    return size
+        log_message("save_response_data exception: failed to save response - {}".format(str(e)))
+
 def get_quicksync_enabled():
     enabled = 1
-    if not is_drive_mounted():
+    if not is_mynode_drive_mounted():
         return -3
     if os.path.isfile("/mnt/hdd/mynode/settings/quicksync_disabled"):
         enabled = 0
@@ -100,29 +57,26 @@ def check_for_new_mynode_version():
     #  5 day(s): 96%             5 day(s): 98%             5 day(s): 99%             5 day(s): 99%
     #  7 day(s): 99.2%           7 day(s): 99.6%           7 day(s): 99.8%           7 day(s): 99.9%
     if latest_version_check_count % 5 == 0 or random.randint(1, 100) <= 40:
-        os.system("printf \"%s | Version Check Count ({}) - Checking for new version! \\n\" \"$(date)\" >> /tmp/check_in_status".format(latest_version_check_count))
-        os.system("/usr/bin/mynode_get_latest_version.sh")
+        log_message("Version Check Count ({}) - Checking for new version!".format(latest_version_check_count))
+        os.system("/usr/bin/mynode_get_latest_version.sh &")
     else:
-        os.system("printf \"%s | Version Check Count ({}) - Skipping version check \\n\" \"$(date)\" >> /tmp/check_in_status".format(latest_version_check_count))
+        log_message("Version Check Count ({}) - Skipping version check".format(latest_version_check_count))
     latest_version_check_count = latest_version_check_count + 1
 
-# Checkin every 24 hours
-def check_in():
+def on_check_in_error(msg):
+    clear_response_data()
+    log_message(msg)
+    data = {}
+    data["status"] = "ERROR"
+    data["message"] = msg
+    save_response_data(data)
 
-    # Check in
-    product_key = get_product_key()
-    data = {
-        "serial": get_device_serial(),
-        "device_type": get_device_type(),
-        "device_arch": get_device_arch(),
-        "version": get_current_version(),
-        "product_key": product_key,
-        "drive_size": get_drive_size(),
-        "quicksync_enabled": get_quicksync_enabled(),
-    }
+# Checkin every 24 hours
+def check_in(check_for_updates):
 
     # Check for new version (not every time to spread out upgrades)
-    check_for_new_mynode_version()
+    if check_for_updates:
+        check_for_new_mynode_version()
 
     # Setup tor proxy
     session = requests.session()
@@ -135,43 +89,96 @@ def check_in():
     check_in_success = False
     while not check_in_success:
         try:
-            # Use tor for check in unless there have been tor 5 failures in a row
+            repeat_delay = 2*60
+            if fail_count <= 5:
+                repeat_delay = 2*60
+            elif fail_count <= 10:
+                repeat_delay = 5*60
+            elif fail_count <= 20:
+                repeat_delay = 60*60
+            else:
+                repeat_delay = 6*60*60
+
+            # Gather check in data
+            product_key = get_product_key()
+            data = {
+                "serial": get_device_serial(),
+                "device_type": get_device_type(),
+                "device_arch": get_device_arch(),
+                "debian_version": get_debian_version(),
+                "version": get_current_version(),
+                "product_key": product_key,
+                "drive_size": get_mynode_drive_size(),
+                "quicksync_enabled": get_quicksync_enabled(),
+                "api_version": 2,
+            }
+            
+            # Use tor for check in unless there have been several tor failures
             r = None
-            if (fail_count+1) % 5 == 0:
+            if (fail_count+1) % 4 == 0:
                 r = requests.post(CHECKIN_URL, data=data, timeout=20)
             else:
                 r = session.post(CHECKIN_URL, data=data, timeout=20)
-            
-            if r.status_code == 200:
-                if r.text == "OK":
-                    os.system("printf \"%s | Check In Success: {} \\n\" \"$(date)\" >> /tmp/check_in_status".format(r.text))
 
-                    if product_key != "community_edition":
-                        unset_skipped_product_key()
-                    delete_product_key_error()
-                else:
-                    os.system("echo '{}' > /home/bitcoin/.mynode/.product_key_error".format(r.text))
-                    os.system("printf \"%s | Check In Returned Error: {} \\n\" \"$(date)\" >> /tmp/check_in_status".format(r.text))
+            if r == None:
+                on_check_in_error("Check In Failed: (retrying) None")
+            elif r.status_code != 200:
+                on_check_in_error("Check In Failed: (retrying) HTTP ERROR {}".format(r.status_code))
+            elif r.status_code == 200:
+                try:
+                    info = json.loads(r.text)
+                    save_response_data(info)
+                
+                    try:
+                        if info["status"] == "OK":
+                            # Check in was successful!
+                            if product_key != "community_edition":
+                                unset_skipped_product_key()
+                            delete_product_key_error()
 
-                os.system("rm -f /tmp/check_in_error")
-                check_in_success = True
+                            os.system("rm -f /tmp/check_in_error")
+                            check_in_success = True
+                            log_message("Check In Success: {}".format(r.text))
+                        else:
+                            mark_product_key_error()
+                            on_check_in_error("Check In Returned Error: {} - {}".format(info["status"], r.text))
+                    except Exception as e:
+                        on_check_in_error("Check In Failed: Error Parsing Response - {} - {}".format(str(e), r.text))
+                except Exception as e:
+                    on_check_in_error("Check In Failed: Error Parsing JSON - {}".format(str(e)))
             else:
-                os.system("printf \"%s | Check In Failed. Retrying... Code {} \\n\" \"$(date)\" >> /tmp/check_in_status".format(r.status_code))
+                on_check_in_error("Check In Failed: Unknown")
         except Exception as e:
-            os.system("printf \"%s | Check In Failed. Retrying... Exception {} \\n\" \"$(date)\" >> /tmp/check_in_status".format(e))
-
-        if not check_in_success:
-            # Check in failed, try again in 3 minutes
-            os.system("touch /tmp/check_in_error")
-            time.sleep(120)
-            fail_count = fail_count + 1
+            on_check_in_error("Check In Failed: (retrying) Exception {}".format(e))
+        finally:
+            if not check_in_success:
+                # Check in failed, try again later
+                os.system("touch /tmp/check_in_error")
+                time.sleep(repeat_delay)
+                fail_count = fail_count + 1
 
     return True
 
-# Run check in every 24 hours
 if __name__ == "__main__":
-    delay = 180
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-d", "--delay", type=int, default=0,
+                        help="Time in seconds to delay before opening connection")
+    parser.add_argument("-i", "--interval", type=int, default=0,
+                        help="Time in hours to delay before opening connection")
+    parser.add_argument("-u", "--check-for-updates", action='store_true',
+                        help="Time in hours to delay before opening connection")
+    args = parser.parse_args()
+
+    delay = args.delay
+    interval = 60*60*args.interval
     while True:
-        time.sleep(delay)   # Delay before first checkin so drive is likely mounted
-        check_in()
-        time.sleep(60*60*24 - delay)
+        print("Sleeping {} seconds...".format(delay))
+        time.sleep(delay)
+
+        check_in(args.check_for_updates)
+
+        if args.interval == 0:
+            break
+        else:
+            print("Sleeping {} seconds...".format(interval - delay))
+            time.sleep(interval - delay)

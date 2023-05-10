@@ -1,9 +1,9 @@
 from config import *
-from flask import Blueprint, render_template, session, abort, Markup, request, redirect, send_from_directory, url_for, flash
+from flask import Blueprint, render_template, session, abort, Markup, request, redirect, url_for, flash
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from bitcoin import is_bitcoin_synced
 from bitcoin_info import using_bitcoin_custom_config
-from lightning_info import using_lnd_custom_config
+from lightning_info import using_lnd_custom_config, restart_lnd
 from pprint import pprint, pformat
 from threading import Timer
 from thread_functions import *
@@ -11,6 +11,7 @@ from user_management import check_logged_in
 from lightning_info import *
 from price_info import *
 from utilities import *
+from drive_info import *
 from application_info import *
 import pam
 import time
@@ -30,13 +31,10 @@ def page_settings():
     latest_beta_version = get_latest_beta_version()
 
     changelog = get_device_changelog()
-    serial_number = get_device_serial()
-    device_type = get_device_type()
-    device_arch = get_device_arch()
     device_ram = get_device_ram()
     product_key = get_product_key()
-    pk_skipped = skipped_product_key()
-    pk_error = not is_valid_product_key()
+    product_key_skipped = skipped_product_key()
+    product_key_error = not is_valid_product_key()
     uptime = get_system_uptime()
     date = get_system_date()
     local_ip = get_local_ip()
@@ -45,8 +43,8 @@ def page_settings():
     upload_rate = 100
     download_rate = 100
     try:
-        upload_rate = subprocess.check_output(["cat","/mnt/hdd/mynode/settings/quicksync_upload_rate"])
-        download_rate = subprocess.check_output(["cat","/mnt/hdd/mynode/settings/quicksync_background_download_rate"])
+        upload_rate = to_string(subprocess.check_output(["cat","/mnt/hdd/mynode/settings/quicksync_upload_rate"]))
+        download_rate = to_string(subprocess.check_output(["cat","/mnt/hdd/mynode/settings/quicksync_background_download_rate"]))
     except:
         upload_rate = 100
         download_rate = 100
@@ -65,14 +63,16 @@ def page_settings():
         "upgrade_error": did_upgrade_fail(),
         "upgrade_log": get_recent_upgrade_log(),
         "upgrade_logs": get_all_upgrade_logs(),
-        "serial_number": serial_number,
-        "device_type": device_type,
-        "device_arch": device_arch,
+        "serial_number": get_device_serial(),
+        "device_type": get_device_type(),
+        "device_arch": get_device_arch(),
+        "debian_version": get_debian_version(),
         "device_ram": device_ram,
         "swap_size": get_swap_size(),
+        "check_in_data": get_check_in_data(),
         "product_key": product_key,
-        "product_key_skipped": pk_skipped,
-        "product_key_error": pk_error,
+        "product_key_skipped": product_key_skipped,
+        "product_key_error": product_key_error,
         "changelog": changelog,
         "is_https_forced": is_https_forced(),
         "logout_time_days": logout_time_days,
@@ -82,25 +82,39 @@ def page_settings():
         "is_bitcoin_synced": is_bitcoin_synced(),
         "is_installing_docker_images": is_installing_docker_images(),
         "firewall_rules": get_firewall_rules(),
+        "is_local_traffic_allowed": settings_file_exists("local_traffic_allowed"),
+        "skip_backup_dns_servers": settings_file_exists("skip_backup_dns_servers"),
         "is_testnet_enabled": is_testnet_enabled(),
         "is_quicksync_disabled": not is_quicksync_enabled(),
         "netdata_enabled": is_service_enabled("netdata"),
-        "randomize_balances": get_randomize_balances(),
+        "uas_usb": is_uas_usb_enabled(),
+        "randomize_balances": settings_file_exists("randomize_balances"),
+        "hide_password_warning": settings_file_exists("hide_password_warning"),
+        "keep_bitcoin_debug_log": settings_file_exists("keep_bitcoin_debug_log"),
         "is_uploader_device": is_uploader(),
         "download_rate": download_rate,
         "upload_rate": upload_rate,
         "btcrpcexplorer_token_enabled": is_btcrpcexplorer_token_enabled(),
-        "is_btc_lnd_tor_enabled": is_btc_lnd_tor_enabled(),
-        "is_aptget_tor_enabled": is_aptget_tor_enabled(),
+        "is_btc_ipv4_enabled": settings_file_exists("btc_ipv4_enabled"),
+        "is_btc_tor_enabled": settings_file_exists("btc_tor_enabled"),
+        "is_btc_i2p_enabled": settings_file_exists("btc_i2p_enabled"),
+        "is_lnd_ipv4_enabled": settings_file_exists("lnd_ipv4_enabled"),
+        "is_lnd_tor_enabled": settings_file_exists("lnd_tor_enabled"),
+        "is_tor_repo_enabled": not settings_file_exists("tor_repo_disabled"),
+        "is_aptget_tor_enabled": settings_file_exists("torify_apt_get"),
+        "is_streamisolation_tor_enabled": not settings_file_exists("streamisolation_tor_disabled"),
         "skip_fsck": skip_fsck(),
         "uptime": uptime,
         "date": date,
         "local_ip": local_ip,
+        "local_ip_subnet_conflit": get_local_ip_subnet_conflict(),
         "throttled_data": get_throttled_data(),
         "oom_error": has_oom_error(),
         "oom_info": get_oom_error_info(),
         "data_drive_usage": get_data_drive_usage(),
+        "data_drive_usage_details": Markup(get_data_drive_usage_details()),
         "os_drive_usage": get_os_drive_usage(),
+        "os_drive_usage_details": Markup(get_os_drive_usage_details()),
         "cpu_usage": get_cpu_usage(),
         "ram_usage": get_ram_usage(),
         "device_temp": get_device_temp(),
@@ -119,17 +133,13 @@ def page_status():
     latest_beta_version = get_latest_beta_version()
 
     changelog = get_device_changelog()
-    serial_number = get_device_serial()
-    device_type = get_device_type()
-    device_arch = get_device_arch()
     device_ram = get_device_ram()
     product_key = get_product_key()
-    pk_skipped = skipped_product_key()
-    pk_error = not is_valid_product_key()
+    product_key_skipped = skipped_product_key()
+    product_key_error = not is_valid_product_key()
     uptime = get_system_uptime()
     date = get_system_date()
     local_ip = get_local_ip()
-
 
     # Get Startup Status
     #startup_status_log = get_journalctl_log("mynode")
@@ -179,13 +189,15 @@ def page_status():
         "has_checkin_error": has_checkin_error(),
         "upgrade_error": did_upgrade_fail(),
         "upgrade_logs": get_recent_upgrade_log(),
-        "serial_number": serial_number,
-        "device_type": device_type,
-        "device_arch": device_arch,
+        "serial_number": get_device_serial(),
+        "device_type": get_device_type(),
+        "device_arch": get_device_arch(),
+        "debian_version": get_debian_version(),
         "device_ram": device_ram,
+        "check_in_data": get_check_in_data(),
         "product_key": product_key,
-        "product_key_skipped": pk_skipped,
-        "product_key_error": pk_error,
+        "product_key_skipped": product_key_skipped,
+        "product_key_error": product_key_error,
         "changelog": changelog,
         "lnd_wallet_exists": lnd_wallet_exists(),
         "lnd_ready": is_lnd_ready(),
@@ -199,6 +211,7 @@ def page_status():
         "quicksync_status": quicksync_status,
         "quicksync_status_color": quicksync_status_color,
         "is_bitcoin_synced": is_bitcoin_synced(),
+        "apps": get_all_applications(order_by="alphabetic"),
         #"bitcoin_status_log": bitcoin_status_log,
         "bitcoin_status": get_service_status_basic_text("bitcoin"),
         "bitcoin_status_color": get_service_status_color("bitcoin"),
@@ -271,23 +284,35 @@ def page_status():
         #"usb_extras_status_log": get_journalctl_log("usb_extras"),
         "usb_extras_status": get_service_status_basic_text("usb_extras"),
         "usb_extras_status_color": get_service_status_color("usb_extras"),
+        #"corsproxy_status_log": get_journalctl_log("corsproxy"),
+        "corsproxy_status": get_service_status_basic_text("corsproxy_btcrpc"),
+        "corsproxy_status_color": get_service_status_color("corsproxy_btcrpc"),
         #"www_status_log": get_journalctl_log("www"),
         "www_status": get_service_status_basic_text("www"),
         "www_status_color": get_service_status_color("www"),
+        #"i2pd_status_log": get_journalctl_log("i2pd"),
+        "i2pd_status": get_service_status_basic_text("i2pd"),
+        "i2pd_status_color": get_service_status_color("i2pd"),
         #"ufw_status_log": get_journalctl_log("ufw"),
         "ufw_status": get_service_status_basic_text("ufw"),
         "ufw_status_color": get_service_status_color("ufw"),
+        "linux_status": "Running",
+        "linux_status_color": "green",
+        "dynamic_app_names": get_dynamic_app_names(),
         "firewall_rules": get_firewall_rules(),
         "is_quicksync_disabled": not quicksync_enabled,
         "netdata_enabled": is_service_enabled("netdata"),
         "uptime": uptime,
         "date": date,
         "local_ip": local_ip,
+        "local_ip_subnet_conflit": get_local_ip_subnet_conflict(),
         "throttled_data": get_throttled_data(),
         "oom_error": has_oom_error(),
         "oom_info": get_oom_error_info(),
         "data_drive_usage": get_data_drive_usage(),
+        "data_drive_usage_details": Markup(get_data_drive_usage_details()),
         "os_drive_usage": get_os_drive_usage(),
+        "os_drive_usage_details": Markup(get_os_drive_usage_details()),
         "cpu_usage": get_cpu_usage(),
         "ram_usage": get_ram_usage(),
         "device_temp": get_device_temp(),
@@ -341,7 +366,7 @@ def upgrade_beta_page():
 def get_upgrade_log_page():
     check_logged_in()
 
-    log = get_file_contents("/home/admin/upgrade_logs/upgrade_log_latest.txt").decode("utf8")
+    log = to_string( get_file_contents("/home/admin/upgrade_logs/upgrade_log_latest.txt") )
     if (log == "ERROR"):
         log = "No log file found"
         
@@ -380,7 +405,7 @@ def get_latest_version_page():
 @mynode_settings.route("/settings/check-in")
 def check_in_page():
     check_logged_in()
-    check_in()
+    restart_check_in()
     return redirect("/settings")
 
 @mynode_settings.route("/settings/reset-blockchain")
@@ -392,14 +417,18 @@ def reset_blockchain_page():
     t = Timer(1.0, reset_blockchain)
     t.start()
     
-    # Display wait page
-    templateData = {
-        "title": "myNode",
-        "header_text": "Reset Blockchain",
-        "subheader_text": "This will take several minutes...",
-        "ui_settings": read_ui_settings()
-    }
-    return render_template('reboot.html', **templateData)
+    return redirect("/rebooting")
+
+@mynode_settings.route("/settings/reset-bitcoin-peers")
+def reset_bitcoin_peers_page():
+    check_logged_in()
+
+    check_and_mark_reboot_action("reset_bitcoin_peers")
+
+    t = Timer(1.0, reset_bitcoin_peers)
+    t.start()
+    
+    return redirect("/rebooting")
 
 @mynode_settings.route("/settings/restart-quicksync")
 def restart_quicksync_page():
@@ -410,14 +439,7 @@ def restart_quicksync_page():
     t = Timer(1.0, restart_quicksync)
     t.start()
 
-    # Display wait page
-    templateData = {
-        "title": "myNode",
-        "header_text": "Restart Quicksync",
-        "subheader_text": "This will take several minutes...",
-        "ui_settings": read_ui_settings()
-    }
-    return render_template('reboot.html', **templateData)
+    return redirect("/rebooting")
 
 @mynode_settings.route("/settings/reboot-device")
 def reboot_device_page():
@@ -428,13 +450,7 @@ def reboot_device_page():
     t.start()
 
     # Wait until device is restarted
-    templateData = {
-        "title": "myNode Reboot",
-        "header_text": "Restarting",
-        "subheader_text": "This will take several minutes...",
-        "ui_settings": read_ui_settings()
-    }
-    return render_template('reboot.html', **templateData)
+    return redirect("/rebooting")
 
 @mynode_settings.route("/settings/reboot-device-no-format")
 def reboot_device_no_format_page():
@@ -446,14 +462,7 @@ def reboot_device_no_format_page():
     t = Timer(1.0, reboot_device)
     t.start()
 
-    # Wait until device is restarted
-    templateData = {
-        "title": "myNode Reboot",
-        "header_text": "Restarting",
-        "subheader_text": "This will take several minutes...",
-        "ui_settings": read_ui_settings()
-    }
-    return render_template('reboot.html', **templateData)
+    return redirect("/rebooting")
 
 @mynode_settings.route("/settings/shutdown-device")
 def shutdown_device_page():
@@ -480,15 +489,6 @@ def reindex_blockchain_page():
     t.start()
     return redirect("/settings")
 
-@mynode_settings.route("/settings/rescan-blockchain")
-def rescan_blockchain_page():
-    check_logged_in()
-    os.system("echo 'BTCARGS=-rescan' > "+BITCOIN_ENV_FILE)
-    os.system("systemctl restart bitcoin")
-    t = Timer(30.0, reset_bitcoin_env_file)
-    t.start()
-    return redirect("/settings")
-
 @mynode_settings.route("/settings/reset-docker")
 def reset_docker_page():
     check_logged_in()
@@ -498,14 +498,7 @@ def reset_docker_page():
     t = Timer(1.0, reset_docker)
     t.start()
 
-    # Display wait page
-    templateData = {
-        "title": "myNode",
-        "header_text": "Rebooting",
-        "subheader_text": "This will take several minutes...",
-        "ui_settings": read_ui_settings()
-    }
-    return render_template('reboot.html', **templateData)
+    return redirect("/rebooting")
 
 @mynode_settings.route("/settings/open-clone-tool")
 def open_clone_tool_page():
@@ -513,8 +506,7 @@ def open_clone_tool_page():
 
     check_and_mark_reboot_action("open_clone_tool")
 
-    os.system("touch /home/bitcoin/open_clone_tool")
-    os.system("sync")
+    touch("/home/bitcoin/open_clone_tool")
 
     # Trigger reboot
     t = Timer(1.0, reboot_device)
@@ -603,15 +595,13 @@ def format_external_drive_page():
     else:
         check_and_mark_reboot_action("format_external_drive")
 
-        os.system("touch /home/bitcoin/.mynode/force_format_prompt")
+        touch("/home/bitcoin/.mynode/force_format_prompt")
 
-        templateData = {
-            "title": "myNode",
-            "header_text": "Rebooting",
-            "subheader_text": "This will take several minutes...",
-            "ui_settings": read_ui_settings()
-        }
-        return render_template('reboot.html', **templateData)
+        # Trigger reboot
+        t = Timer(1.0, reboot_device)
+        t.start()
+
+        return redirect("/rebooting")
 
 @mynode_settings.route("/settings/factory-reset", methods=['POST'])
 def factory_reset_page():
@@ -627,13 +617,7 @@ def factory_reset_page():
         t = Timer(2.0, factory_reset)
         t.start()
 
-        templateData = {
-            "title": "myNode Factory Reset",
-            "header_text": "Factory Reset",
-            "subheader_text": "This will take several minutes...",
-            "ui_settings": read_ui_settings()
-        }
-        return render_template('reboot.html', **templateData)
+        return redirect("/rebooting")
 
 
 @mynode_settings.route("/settings/password", methods=['POST'])
@@ -715,22 +699,76 @@ def page_lnd_delete_wallet():
 
     check_and_mark_reboot_action("delete_lnd_data")
 
-    # Successful Auth
     delete_lnd_data()
     
     # Trigger reboot
     t = Timer(1.0, reboot_device)
     t.start()
 
-    # Wait until device is restarted
-    templateData = {
-        "title": "myNode Reboot",
-        "header_text": "Restarting",
-        "subheader_text": "This will take several minutes...",
-        "ui_settings": read_ui_settings()
-    }
-    return render_template('reboot.html', **templateData)
+    return redirect("/rebooting")
 
+@mynode_settings.route("/settings/reset-lnd-watchtower")
+def page_lnd_reset_lnd_watchtower():
+    check_logged_in()
+
+    type = request.args.get('type')
+    if type == "client":
+        delete_lnd_watchtower_client_data()
+    elif type == "server":
+        delete_lnd_watchtower_server_data()
+    else:
+        flash("Invalid Type", category="error")
+        return redirect(url_for(".page_settings"))
+    
+    restart_lnd()
+
+    flash("Restarting lnd...", category="message")
+    return redirect("/settings")
+
+@mynode_settings.route("/settings/save-network-settings", methods=['POST'])
+def page_save_network_settings():
+    check_logged_in()
+
+    check_and_mark_reboot_action("save_network_settings")
+
+    network_settings = ["btc_ipv4", "btc_tor", "btc_i2p", "lnd_ipv4", "lnd_tor"]
+    for s in network_settings:
+        delete_settings_file(s + "_enabled")
+
+    for s in network_settings:
+        if request.form.get(s + "_checkbox"):
+            create_settings_file(s + "_enabled")
+
+    # Trigger reboot
+    t = Timer(1.0, reboot_device)
+    t.start()
+
+    return redirect("/rebooting")
+
+@mynode_settings.route("/settings/choose-network")
+def page_choose_network():
+    check_logged_in()
+
+    # This page handles the "choose network" page choice during initial setup
+    if not settings_file_exists("btc_network_settings_defaulted"):
+        if request.args.get("network") and request.args.get("network") == "clearnet":
+            create_settings_file("btc_ipv4_enabled")
+            create_settings_file("lnd_ipv4_enabled")
+            create_settings_file("btc_network_settings_defaulted")
+            # Give startup script time to change status so redirect doesn't show network choice again
+            time.sleep(1)
+        elif request.args.get("network") and request.args.get("network") == "tor":
+            create_settings_file("btc_tor_enabled")
+            create_settings_file("lnd_tor_enabled")
+            create_settings_file("btc_network_settings_defaulted")
+            # Give startup script time to change status so redirect doesn't show network choice again
+            time.sleep(1)
+        else:
+            flash("Error: Unknown network choice.", category="error")
+    else:
+        flash("Error: Network detaults already setup. Use settings page to change networks.", category="error")
+
+    return redirect("/")
 
 @mynode_settings.route("/settings/reset-tor", methods=['POST'])
 def page_reset_tor():
@@ -750,53 +788,16 @@ def page_reset_tor():
         t = Timer(1.0, reboot_device)
         t.start()
 
-    # Wait until device is restarted
-    templateData = {
-        "title": "myNode Reboot",
-        "header_text": "Restarting",
-        "subheader_text": "This will take several minutes...",
-        "ui_settings": read_ui_settings()
-    }
-    return render_template('reboot.html', **templateData)
+    return redirect("/rebooting")
 
-@mynode_settings.route("/settings/enable_btc_lnd_tor")
-def page_enable_btc_lnd_tor():
+@mynode_settings.route("/settings/reset-tor-connections")
+def page_reset_tor_connections():
     check_logged_in()
 
-    check_and_mark_reboot_action("enable_btc_lnd_tor")
-    
-    enable = request.args.get('enable')
-    if enable == "1":
-        enable_btc_lnd_tor()
-    else:
-        disable_btc_lnd_tor()
+    reset_tor_connections()
 
-    # Trigger reboot
-    t = Timer(1.0, reboot_device)
-    t.start()
-
-    # Wait until device is restarted
-    templateData = {
-        "title": "myNode Reboot",
-        "header_text": "Restarting",
-        "subheader_text": "This will take several minutes...",
-        "ui_settings": read_ui_settings()
-    }
-    return render_template('reboot.html', **templateData)
-
-@mynode_settings.route("/settings/set_https_forced")
-def page_set_https_forced_page():
-    check_logged_in()
-    
-    forced = request.args.get('forced')
-    if forced == "1":
-        force_https(True)
-    else:
-        force_https(False)
-
-    flash("HTTPS Settings Saved", category="message")
-    return redirect(url_for(".page_settings"))
-
+    flash("Tor connections reset", category="message")
+    return redirect("/settings")
 
 @mynode_settings.route("/settings/btcrpcexplorer_token")
 def page_btcrpcexplorer_token():
@@ -810,20 +811,6 @@ def page_btcrpcexplorer_token():
 
     flash("BTC RPC Explorer Token Setting Saved", category="message")
     return redirect(url_for(".page_settings")) 
-    
-
-@mynode_settings.route("/settings/enable_aptget_tor")
-def page_enable_aptget_tor():
-    check_logged_in()
-    
-    enable = request.args.get('enable')
-    if enable == "1":
-        enable_aptget_tor()
-    else:
-        disable_aptget_tor()
-    
-    flash("Tor Setting Saved", category="message")
-    return redirect(url_for(".page_settings"))
 
 @mynode_settings.route("/settings/mynode_logs.tar.gz")
 def download_logs_page():
@@ -831,16 +818,16 @@ def download_logs_page():
 
     os.system("/usr/bin/mynode_gen_debug_tarball.sh")
 
-    return send_from_directory(directory="/tmp/", filename="mynode_logs.tar.gz")
+    return download_file(directory="/tmp/", filename="mynode_logs.tar.gz")
 
 @mynode_settings.route("/settings/mynode_web.cert")
 def download_https_cert_page():
     check_logged_in()
 
     if os.path.isfile("/mnt/hdd/mynode/settings/https/myNode.local.crt"):
-        return send_from_directory(directory="/mnt/hdd/mynode/settings/https/", filename="myNode.local.crt")
+        return download_file(directory="/mnt/hdd/mynode/settings/https/", filename="myNode.local.crt")
     if os.path.isfile("/home/bitcoin/.mynode/https/myNode.local.crt"):
-        return send_from_directory(directory="/home/bitcoin/.mynode/https/", filename="myNode.local.crt")
+        return download_file(directory="/home/bitcoin/.mynode/https/", filename="myNode.local.crt")
     return "error_missing_file"
 
 @mynode_settings.route("/settings/regen-https-certs")
@@ -852,6 +839,18 @@ def regen_https_certs_page():
     t.start()
     
     flash("HTTPS Service Restarting", category="message")
+    return redirect(url_for(".page_settings"))
+
+@mynode_settings.route("/settings/regen-ssh-keys")
+def regen_ssh_keys_page():
+    check_logged_in()
+
+    #os.system("rm -f /home/bitcoin/.mynode/.gensshkeys")
+    os.system("rm -rf /etc/ssh/ssh_host_*")
+    os.system("dpkg-reconfigure openssh-server")
+    os.system("systemctl restart ssh")
+
+    flash("SSH Service Restarting", category="message")
     return redirect(url_for(".page_settings"))
 
 @mynode_settings.route("/settings/regen-electrs-certs")
@@ -917,7 +916,35 @@ def uninstall_app_page():
     uninstall_app(app_name)
 
     flash("Application Uninstalled", category="message")
+    r = request.args.get("return_page")
+    if r:
+        if r == "marketplace_app":
+            return redirect("/marketplace/{}".format(app_name))
+        elif r == "settings":
+            return redirect("/settings")
+
     return redirect("/apps")
+
+@mynode_settings.route("/settings/remove-app")
+def remove_app_page():
+    check_logged_in()
+
+    # Check application specified
+    if not request.args.get("app"):
+        flash("No application specified", category="error")
+        return redirect("/marketplace")
+    
+    # Check application name is valid
+    app_name = request.args.get("app")
+    if not is_application_valid(app_name):
+        flash("Application is invalid", category="error")
+        return redirect("/marketplace")
+
+    # Remove app from device (for dynamic apps)
+    remove_app(app_name)
+
+    flash("Application Removed", category="message")
+    return redirect("/marketplace")
 
 @mynode_settings.route("/settings/toggle-uploader")
 def toggle_uploader_page():
@@ -935,14 +962,7 @@ def toggle_uploader_page():
     t = Timer(1.0, reboot_device)
     t.start()
 
-    # Wait until device is restarted
-    templateData = {
-        "title": "myNode Reboot",
-        "header_text": "Restarting",
-        "subheader_text": "This will take several minutes...",
-        "ui_settings": read_ui_settings()
-    }
-    return render_template('reboot.html', **templateData)
+    return redirect("/rebooting")
 
 @mynode_settings.route("/settings/toggle-quicksync")
 def toggle_quicksync_page():
@@ -958,14 +978,7 @@ def toggle_quicksync_page():
         t = Timer(1.0, settings_enable_quicksync)
         t.start()
 
-    # Wait until device is restarted
-    templateData = {
-        "title": "myNode Reboot",
-        "header_text": "Restarting",
-        "subheader_text": "This will take several minutes...",
-        "ui_settings": read_ui_settings()
-    }
-    return render_template('reboot.html', **templateData)
+    return redirect("/rebooting")
 
 @mynode_settings.route("/settings/toggle-testnet")
 def toggle_testnet_page():
@@ -980,14 +993,7 @@ def toggle_testnet_page():
     t = Timer(1.0, reboot_device)
     t.start()
 
-    # Wait until device is restarted
-    templateData = {
-        "title": "myNode Reboot",
-        "header_text": "Restarting",
-        "subheader_text": "This will take several minutes...",
-        "ui_settings": read_ui_settings()
-    }
-    return render_template('reboot.html', **templateData)
+    return redirect("/rebooting")
 
 @mynode_settings.route("/settings/ping")
 def ping_page():
@@ -1065,13 +1071,7 @@ def modify_swap_page():
     t.start()
 
     # Display wait page
-    templateData = {
-        "title": "myNode Reboot",
-        "header_text": "Restarting",
-        "subheader_text": "This will take several minutes...",
-        "ui_settings": read_ui_settings()
-    }
-    return render_template('reboot.html', **templateData)
+    return redirect("/rebooting")
 
 @mynode_settings.route("/settings/clear-oom-error")
 def page_clear_oom_error():
@@ -1080,15 +1080,42 @@ def page_clear_oom_error():
     flash("Warning Cleared", category="message")
     return redirect("/settings")
 
-@mynode_settings.route("/settings/enable_randomize_balances")
-def page_enable_enable_randomize_balances():
+@mynode_settings.route("/settings/clear-usb-error")
+def page_clear_usb_error():
+    check_logged_in()
+    clear_usb_error()
+    flash("Warning Cleared", category="message")
+    return redirect("/")
+
+@mynode_settings.route("/settings/toggle_setting")
+def page_toggle_setting():
     check_logged_in()
     
+    name = request.args.get('name')
     enable = request.args.get('enable')
     if enable == "1":
-        set_randomize_balances(True)
+        create_settings_file(name)
+    elif enable == "0":
+        delete_settings_file(name)
     else:
-        set_randomize_balances(False)
+        flash("Error Updating Setting", category="error")
+        return redirect("/settings")
 
-    flash("Randomize Balance Setting Updated", category="message")
+    # Restart service if necessary
+    service_to_restart = request.args.get('restart_service')
+    if is_application_valid(service_to_restart):
+        t = Timer(1.0, restart_service, [service_to_restart])
+        t.start()
+
+    # Reboot if necessary
+    reboot = request.args.get('reboot')
+    if reboot == "1":
+        check_and_mark_reboot_action("toggle_setting_reboot")
+
+        t = Timer(1.0, reboot_device)
+        t.start()
+
+        return redirect("/rebooting")
+
+    flash("Setting Updated", category="message")
     return redirect("/settings")

@@ -6,8 +6,8 @@
 
     <body>
         {% include 'includes/logo_header.html' %}
-        <div class="mynode_back_div">
-            <a class="ui-button ui-widget ui-corner-all mynode_back" href="/"><span class="ui-icon ui-icon-home"></span>home&nbsp;</a>
+        <div class="mynode_top_left_div">
+            <a href="/"><img class="mynode_nav_icon" src="{{ url_for('static', filename="images/home.png")}}"/></a>
         </div>
 
         <div class="main_header">Electrum Server Status</div>
@@ -51,6 +51,10 @@
                 <div class="info_tile_header">Info</div>
                 <div class="info_tile_contents">
                     <table class="info_table">
+                        <tr>
+                            <th>Version</th>
+                            <td>{{electrs_version}}</td>
+                        </tr>
                         <tr>
                             <th>Electrum Server IP</th>
                             <td>{{server_ip}}</td>
@@ -103,7 +107,7 @@
         <div class="app_tile_row">
             <div class="app_tile_short">
                 <div class="app_status_icon"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/electrs.png")}}"/></div>
+                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/app_icons/electrs.png")}}"/></div>
                 <div class="app_title">Local<br/>PC Wallet</div>
                 <div class="app_status"></div>
                 <div class="app_contents">
@@ -113,7 +117,7 @@
 
             <div class="app_tile_short">
                 <div class="app_status_icon"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/electrs.png")}}"/></div>
+                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/app_icons/electrs.png")}}"/></div>
                 <div class="app_title">Local<br/>Mobile Wallets</div>
                 <div class="app_status"></div>
                 <div class="app_contents">
@@ -123,7 +127,7 @@
 
             <div class="app_tile_short">
                 <div class="app_status_icon"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/tor.png")}}"/></div>
+                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/app_icons/tor.png")}}"/></div>
                 <div class="app_title">Remote<br/>PC Wallet</div>
                 <div class="app_status"></div>
                 <div class="app_contents">
@@ -133,7 +137,7 @@
 
             <div class="app_tile_short">
                 <div class="app_status_icon"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/tor.png")}}"/></div>
+                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/app_icons/tor.png")}}"/></div>
                 <div class="app_title">Remote<br/>Mobile Wallet</div>
                 <div class="app_status"></div>
                 <div class="app_contents">

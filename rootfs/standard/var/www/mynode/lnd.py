@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, session, abort, Markup, request, redirect, send_from_directory, url_for, flash
+from flask import Blueprint, render_template, session, abort, Markup, request, redirect, url_for, flash
 from pprint import pprint, pformat
 from threading import Timer
 from bitcoin_info import *
@@ -78,7 +78,6 @@ def page_lnd():
             "wallet_logged_in": wallet_logged_in,
             "lnd_has_error": lnd_has_error,
             "using_lnd_custom_config": using_lnd_custom_config(),
-            "watchtower_enabled": is_watchtower_enabled(),
             "version": get_lnd_version(),
             "loop_version": get_loop_version(),
             "pool_version": get_pool_version(),
@@ -93,7 +92,6 @@ def page_lnd():
             "wallet_exists": wallet_exists,
             "wallet_logged_in": wallet_logged_in,
             "lnd_has_error": lnd_has_error,
-            "watchtower_enabled": is_watchtower_enabled(),
             "alias": alias,
             "status": get_lnd_status(),
             "version": get_lnd_version(),
@@ -114,7 +112,6 @@ def page_lnd():
                 "wallet_exists": wallet_exists,
                 "wallet_logged_in": False,
                 "lnd_has_error": lnd_has_error,
-                "watchtower_enabled": is_watchtower_enabled(),
                 "alias": alias,
                 "status": "Waiting on LND data...",
                 "version": get_lnd_version(),
@@ -164,13 +161,6 @@ def page_lnd():
         payments = get_lightning_payments()
         invoices = get_lightning_invoices()
 
-        watchtower_server_info = get_lightning_watchtower_server_info()
-        watchtower_uri = "..."
-        if watchtower_server_info != None:
-            if "uris" in watchtower_server_info and len(watchtower_server_info['uris']) > 0:
-                watchtower_uri = watchtower_server_info['uris'][0]
-
-            
     except Exception as e:
         templateData = {
             "title": "myNode Lightning Status",
@@ -208,14 +198,12 @@ def page_lnd():
         "uri": uri,
         "ip": ip,
         "channel_db_size": lnd_get_channel_db_size(),
-        "watchtower_enabled": is_watchtower_enabled(),
         "lit_password": get_lnd_lit_password(),
         "lnd_deposit_address": lnd_deposit_address,
         "channel_balance": format_sat_amount(balance_info["channel_balance"]),
         "channel_pending": format_sat_amount(balance_info["channel_pending"]),
         "wallet_balance": format_sat_amount(balance_info["wallet_balance"]),
         "wallet_pending": format_sat_amount(balance_info["wallet_pending"]),
-        "watchtower_uri": watchtower_uri,
         "peers": peers,
         "channels": channels,
         "transactions": transactions,
@@ -243,10 +231,10 @@ def lnd_regen_tls_cert():
 @mynode_lnd.route("/lnd/tls.cert")
 def lnd_tls_cert():
     check_logged_in()
-    return send_from_directory(directory="/mnt/hdd/mynode/lnd/", filename="tls.cert")
+    return download_file(directory="/mnt/hdd/mynode/lnd/", filename="tls.cert")
 
-@mynode_lnd.route("/lnd/admin.macaroon")
-def lnd_admin_macaroon():
+@mynode_lnd.route("/lnd/<name>.macaroon")
+def lnd_download_macaroon(name):
     check_logged_in()
 
     folder = "mainnet"
@@ -254,18 +242,7 @@ def lnd_admin_macaroon():
         folder = "testnet"
 
     # Download macaroon
-    return send_from_directory(directory="/mnt/hdd/mynode/lnd/data/chain/bitcoin/{}/".format(folder), filename="admin.macaroon")
-
-@mynode_lnd.route("/lnd/readonly.macaroon")
-def lnd_readonly_macaroon():
-    check_logged_in()
-
-    folder = "mainnet"
-    if is_testnet_enabled():
-        folder = "testnet"
-
-    # Download macaroon
-    return send_from_directory(directory="/mnt/hdd/mynode/lnd/data/chain/bitcoin/{}/".format(folder), filename="readonly.macaroon")
+    return download_file(directory="/mnt/hdd/mynode/lnd/data/chain/bitcoin/{}/".format(folder), filename="{}.macaroon".format(name))
 
 @mynode_lnd.route("/lnd/channel.backup")
 def lnd_channel_backup():
@@ -274,7 +251,7 @@ def lnd_channel_backup():
     scb_location = get_lnd_channel_backup_file()
     parts = os.path.split(scb_location)
 
-    return send_from_directory(directory=parts[0]+"/", filename=parts[1])
+    return download_file(directory=parts[0]+"/", filename=parts[1])
 
 @mynode_lnd.route("/lnd/create_wallet")
 def page_lnd_create_wallet():
@@ -463,7 +440,8 @@ def page_lnd_change_alias():
         flash("Invalid Alias", category="error")
         return redirect(url_for(".page_lnd"))
     with open("/mnt/hdd/mynode/settings/.lndalias", "w") as f:
-        utf8_alias = alias.decode('utf-8', 'ignore')
+        alias_bytes = alias.encode('utf-8')
+        utf8_alias = alias_bytes.decode('utf-8', 'ignore')
         f.write(utf8_alias)
         f.close()
 
@@ -526,19 +504,95 @@ def lnd_config_page():
     }
     return render_template('lnd_config.html', **templateData)
 
-@mynode_lnd.route("/lnd/set_watchtower_enabled")
-def lnd_set_watchtower_enabled_page():
+@mynode_lnd.route("/lnd/watchtower/set_watchtower_server_enabled")
+def lnd_set_watchtower_server_enabled_page():
     check_logged_in()
 
     if request.args.get("enabled") and request.args.get("enabled") == "1":
-        enable_watchtower()
+        enable_watchtower_server()
     else:
-        disable_watchtower()
+        disable_watchtower_server()
 
     restart_lnd()
 
     flash("Watchtower settings updated!", category="message")
-    return redirect(url_for(".page_lnd"))
+    return redirect(url_for(".page_lnd_watchtower"))
+
+@mynode_lnd.route("/lnd/watchtower/set_watchtower_client_enabled")
+def lnd_set_watchtower_client_enabled_page():
+    check_logged_in()
+
+    if request.args.get("enabled") and request.args.get("enabled") == "1":
+        enable_watchtower_client()
+    else:
+        disable_watchtower_client()
+
+    restart_lnd()
+
+    flash("Watchtower settings updated!", category="message")
+    return redirect(url_for(".page_lnd_watchtower"))
+
+@mynode_lnd.route("/lnd/watchtower")
+def page_lnd_watchtower():
+    check_logged_in()
+
+    watchtower_server_info = get_lightning_watchtower_server_info() 
+    watchtower_client_towers = get_lightning_watchtower_client_towers() 
+    watchtower_client_stats = get_lightning_watchtower_client_stats() 
+    watchtower_client_policy = get_lightning_watchtower_client_policy() 
+
+    templateData = {
+        "title": "myNode Lightning Watchtower",
+        "watchtower_server_enabled": is_watchtower_server_enabled(),
+        "watchtower_server_uri": Markup(watchtower_server_info["watchtower_server_uri"]),
+        "watchtower_client_enabled": is_watchtower_client_enabled(),
+        "watchtower_client_towers": watchtower_client_towers,
+        "watchtower_client_stats": watchtower_client_stats,
+        "watchtower_client_policy": watchtower_client_policy,
+        "header": "Lightning Watchtower",
+        "ui_settings": read_ui_settings()
+    }
+    return render_template('lnd_watchtower.html', **templateData)
+
+@mynode_lnd.route("/lnd/watchtower/add_tower", methods=["POST"])
+def page_lnd_watchtower_add_tower():
+    check_logged_in()
+
+    if request.form.get("new_tower"):
+        cmd = "lncli wtclient add {}".format(request.form.get("new_tower"))
+        r = run_lncli_command(cmd)
+        if r == None:
+            flash("Error adding tower!", category="error")
+            return redirect(url_for(".page_lnd_watchtower"))
+    else:
+        flash("Error adding tower - missing tower", category="error")
+        return redirect(url_for(".page_lnd_watchtower"))
+
+    # Update Lightning Info
+    update_lightning_info()
+
+    flash("Tower added!", category="message")
+    return redirect(url_for(".page_lnd_watchtower"))
+
+@mynode_lnd.route("/lnd/watchtower/remove_tower", methods=["GET"])
+def page_lnd_watchtower_remove_tower():
+    check_logged_in()
+
+    if request.args.get("tower"):
+        cmd = "lncli wtclient remove {}".format(request.args.get("tower"))
+        r = run_lncli_command(cmd)
+        if r == None:
+            flash("Error removing tower!", category="error")
+            return redirect(url_for(".page_lnd_watchtower"))
+    else:
+        flash("Error removing tower - missing tower", category="error")
+        return redirect(url_for(".page_lnd_watchtower"))
+
+    # Update Lightning Info
+    update_lightning_info()
+
+    flash("Tower removed!", category="message")
+    return redirect(url_for(".page_lnd_watchtower"))
 
 ##############################################
 ## LND API Calls

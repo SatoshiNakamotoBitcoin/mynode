@@ -6,6 +6,8 @@ from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from bitcoin_info import *
 from lightning_info import *
 from device_info import *
+from drive_info import *
+from utilities import *
 from enable_disable_functions import *
 from systemctl_info import *
 from electrum_info import update_electrs_info
@@ -15,84 +17,74 @@ import random
 
 # Info to get from the update threads
 has_updated_btc_info = False
-data_drive_usage = "0%"
-os_drive_usage = "0%"
 cpu_usage = "..."
 ram_usage = "..."
 swap_usage = "..."
-device_temp = "..."
+os_drive_usage_details = "..."
+data_drive_usage_details = "..."
 public_ip = "not_detected"
 
 # Getters
 def get_has_updated_btc_info():
     global has_updated_btc_info
     return has_updated_btc_info
-def get_data_drive_usage():
-    global data_drive_usage
-    return data_drive_usage
-def get_os_drive_usage():
-    global os_drive_usage
-    return os_drive_usage
 def get_cpu_usage():
     global cpu_usage
     return cpu_usage
-def get_ram_usage():
-    global ram_usage
-    return ram_usage
-def get_swap_usage():
-    global swap_usage
-    return swap_usage
-def get_device_temp():
-    global device_temp
-    return device_temp
+def get_os_drive_usage_details():
+    global os_drive_usage_details
+    return os_drive_usage_details
+def get_data_drive_usage_details():
+    global data_drive_usage_details
+    return data_drive_usage_details
 def get_public_ip():
     global public_ip
     return public_ip
 
 # Updates device info every 60 seconds
+device_info_call_count = 0
 def update_device_info():
-    global data_drive_usage
-    global os_drive_usage
     global cpu_usage
-    global ram_usage
-    global swap_usage
-    global device_temp
+    global os_drive_usage_details
+    global data_drive_usage_details
+    global device_info_call_count
 
     # Get drive info
     try:
         # Get throttled info (raspi only)
         reload_throttled_data()
 
-        # Get drive actual usage
-        #results = subprocess.check_output(["du","-sh","/mnt/hdd/mynode/"])
-        #drive_usage = results.split()[0]
-
-        # Get drive percent usage
-        results = subprocess.check_output("df -h /mnt/hdd | grep /dev | awk '{print $5}'", shell=True)
-        data_drive_usage = to_string(results)
-        results = subprocess.check_output("df -h / | grep /dev | awk '{print $5}'", shell=True)
-        os_drive_usage = to_string(results)
-
-        # Get RAM usage
-        ram_info = psutil.virtual_memory()
-        ram_usage = "{:.1f}%".format(ram_info.percent)
-
-        # Get Swap Usage
-        swap_info = psutil.swap_memory()
-        swap_usage = "{:.1f}%".format(swap_info.percent)
-
         # Get CPU usage
         cpu_info = psutil.cpu_times_percent(interval=10.0, percpu=False)
         cpu_usage = "{:.1f}%".format(100.0 - cpu_info.idle)
 
-        # Get device temp
-        results = subprocess.check_output("cat /sys/class/thermal/thermal_zone0/temp", shell=True)
-        temp = int(results) / 1000
-        device_temp = "{:.1f}".format(temp)
+        # Update every 24 hrs
+        if device_info_call_count % 60*24 == 0:
+            os_drive_usage_details = ""
+            os_drive_usage_details += "<small>"
+            os_drive_usage_details += "<b>App Storage</b><br/>"
+            os_drive_usage_details += "<pre>" + run_linux_cmd("du -h -d1 /opt/mynode/", ignore_failure=True) + "</pre><br/>"
+            os_drive_usage_details += "<b>User Storage</b><br/>"
+            os_drive_usage_details += "<pre>" + run_linux_cmd("du -h -d1 /home/", ignore_failure=True) + "</pre><br/>"
+            os_drive_usage_details += "<b>Rust Toolchain Storage</b><br/>"
+            if os.path.isdir("/root/.cargo/"):
+                os_drive_usage_details += "<pre>" + run_linux_cmd("du -h -d1 /root/.cargo/", ignore_failure=True) + "</pre><br/>"
+            if os.path.isdir("/home/admin/.cargo/"):
+                os_drive_usage_details += "<pre>" + run_linux_cmd("du -h -d1 /home/admin/.cargo/", ignore_failure=True) + "</pre><br/>"
+            os_drive_usage_details += "</small>"
+
+            data_drive_usage_details = ""
+            data_drive_usage_details += "<small>"
+            data_drive_usage_details += "<b>Disk Format</b>"
+            data_drive_usage_details += "<p>" + get_current_drive_filesystem_type() + "</p>"
+            data_drive_usage_details += "<b>Data Storage</b><br/>"
+            data_drive_usage_details += "<pre>" + run_linux_cmd("du -h -d1 /mnt/hdd/mynode/", ignore_failure=True) + "</pre><br/>"
+            data_drive_usage_details += "</small>"
 
     except Exception as e:
-        print("CAUGHT update_device_info EXCEPTION: " + str(e))
-        return
+        log_message("CAUGHT update_device_info EXCEPTION: " + str(e))
+
+    device_info_call_count = device_info_call_count + 1
 
 # Updates main bitcoin info every 30 seconds
 def update_bitcoin_main_info_thread():
@@ -130,7 +122,7 @@ def update_bitcoin_main_info_thread():
                 time.sleep(10)
 
     except Exception as e:
-        print("CAUGHT update_bitcoin_main_info_thread EXCEPTION: " + str(e))
+        log_message("CAUGHT update_bitcoin_main_info_thread EXCEPTION: " + str(e))
 
 
 # Updates other bitcoin info every 60 seconds
@@ -139,7 +131,7 @@ def update_bitcoin_other_info_thread():
         # Get bitcoin info
         update_bitcoin_other_info()
     except Exception as e:
-        print("CAUGHT update_bitcoin_other_info_thread EXCEPTION: " + str(e))
+        log_message("CAUGHT update_bitcoin_other_info_thread EXCEPTION: " + str(e))
 
 
 # Updates electrs info every 60 seconds
@@ -148,7 +140,7 @@ def update_electrs_info_thread():
         if is_service_enabled("electrs"):
             update_electrs_info()
     except Exception as e:
-        print("CAUGHT update_electrs_info_thread EXCEPTION: " + str(e))
+        log_message("CAUGHT update_electrs_info_thread EXCEPTION: " + str(e))
 
 
 # Updates LND info every 60 seconds
@@ -157,7 +149,7 @@ def update_lnd_info_thread():
         # Get LND info
         update_lightning_info()
     except Exception as e:
-        print("CAUGHT update_lnd_info_thread EXCEPTION: " + str(e))
+        log_message("CAUGHT update_lnd_info_thread EXCEPTION: " + str(e))
 
 
 # Updates price info every 5 minutes
@@ -166,7 +158,7 @@ def update_price_info_thread():
         # Get Price Info
         update_price_info()
     except Exception as e:
-        print("CAUGHT update_price_info_thread EXCEPTION: " + str(e))
+        log_message("CAUGHT update_price_info_thread EXCEPTION: " + str(e))
 
 
 # Check every 3 hours
@@ -182,11 +174,6 @@ def find_public_ip():
         public_ip = get(url).text
     except Exception as e:
         public_ip = "Failed to find public IP. "
-
-
-# Updated: Check ins now happen in different process. This will just restart the service to force a new check in.
-def check_in():
-    os.system("systemctl restart check_in")
 
 
 def dmesg_log_clear():
@@ -210,9 +197,19 @@ def monitor_dmesg():
         try:
             l = to_bytes(l).decode('utf-8')
 
-            #TODO: Check for things like OOM, etc...
+            # Check for things like OOM, USB errors, etc...
             if "Out of memory" in l:
                 set_oom_error(l)
+                dmesg_log(l)
+            elif "reset SuperSpeed Gen 1 USB device" in l:
+                increment_cached_integer("dmesg_reset_usb_count")
+                if get_cached_data("dmesg_reset_usb_count") >= 100:
+                    set_usb_error()
+                dmesg_log(l)
+            elif "blk_update_request: I/O error, dev sd" in l:
+                increment_cached_integer("dmesg_io_error_count")
+                if get_cached_data("dmesg_io_error_count") >= 100:
+                    set_usb_error()
                 dmesg_log(l)
             else:
                 #dmesg_log(l)

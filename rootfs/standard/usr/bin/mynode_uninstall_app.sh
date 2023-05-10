@@ -25,8 +25,21 @@ sync
 if [ "$APP" = "bos" ]; then
     npm uninstall -g balanceofsatoshis
 elif [ "$APP" = "btcpayserver" ]; then
-    . "/opt/mynode/btcpayserver/btcpay-env.sh" && cd "$BTCPAY_BASE_DIRECTORY" && . helpers.sh && btcpay_remove
+    # Stop and clean images
+    /usr/local/bin/btcpay-down.sh
+    /usr/local/bin/btcpay-clean.sh
+
+    # Remove files and data
+    source /etc/profile.d/btcpay-env.sh
+    cd "$(dirname "$BTCPAY_ENV_FILE")"
+    docker-compose -f $BTCPAY_DOCKER_COMPOSE down --v # Remove volumes (uninstall only, not reinstall)
     cd ~
+    rm -f /etc/profile.d/btcpay-env.sh
+    rm -rf /usr/local/bin/btcpay-*
+    rm -rf /usr/local/bin/changedomain.sh
+
+    # Finally remove main folder
+    rm -rf /mnt/hdd/mynode/btcpayserver
 elif [ "$APP" = "btcrpcexplorer" ]; then
     rm -rf /opt/mynode/btc-rpc-explorer
 elif [ "$APP" = "dojo" ]; then
@@ -55,9 +68,11 @@ else
     echo "No custom uninstall steps"
 fi
 
-# Attempt generic uninstall
-rm -rf /opt/mynode/${APP}
+# Attempt dynamic app uninstall
+mynode-manage-apps uninstall "$APP"
 
+# Remove app folder
+rm -rf /opt/mynode/${APP}
 
 chown -R admin:admin /home/admin/upgrade_logs
 sync

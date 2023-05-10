@@ -23,6 +23,7 @@ proc checkPartitionsForExistingMyNodeFs {partitionsName} {
 
     # Check if we are skipping the check (to reformat drive)
     if { [file exists /home/bitcoin/.mynode/force_format_prompt] } {
+        puts "Forcing format prompt (/home/bitcoin/.mynode/force_format_prompt exists)"
         return 0
     }
 
@@ -77,6 +78,9 @@ proc createMyNodeFsOnBlockDevice {blockDevice} {
     }
 
     if [catch {
+        # Run USB check to make sure we are using a good driver
+        runCommand /usr/local/bin/python3 /usr/bin/mynode_usb_driver_check.py > /dev/null
+
         puts "Waiting on format confirmation..."
         runCommand echo "drive_format_confirm" > /tmp/.mynode_status
         while { [file exists "/tmp/format_ok"] == 0 } {
@@ -95,9 +99,14 @@ proc createMyNodeFsOnBlockDevice {blockDevice} {
         }
 
         puts "Formatting new partition ${blockPartition}"
-        runCommand mkfs.ext4 -F -L myNode /dev/${blockPartition}
+        if [file exists "/tmp/format_filesystem_btrfs"] {
+            runCommand mkfs.btrfs -f -L myNode /dev/${blockPartition}
+        } else {
+            runCommand mkfs.ext4 -F -L myNode /dev/${blockPartition}
+        }
 
-        runCommand mount /dev/${blockPartition} /mnt/hdd -o errors=continue
+        #runCommand mount /dev/${blockPartition} /mnt/hdd -o errors=continue
+        runCommand mount /dev/${blockPartition} /mnt/hdd
         runCommand date >/mnt/hdd/.mynode
         runCommand echo /dev/${blockPartition} > /tmp/.mynode_drive
     }] {

@@ -5,6 +5,7 @@ set -x
 shopt -s nullglob
 
 source /usr/share/mynode/mynode_config.sh
+source /usr/share/mynode/mynode_functions.sh
 source /usr/share/mynode/mynode_app_versions.sh
 
 # Verify FS is mounted as R/W
@@ -16,29 +17,24 @@ fi
 # Set sticky bit on /tmp
 chmod +t /tmp
 
-# Make sure resolv.conf is a symlink to so resolvconf works
-# if [ ! -h /etc/resolv.conf ]; then
-#     rm -f /etc/resolv.conf
-#     mkdir -p /etc/resolvconf/run/
-#     touch /etc/resolvconf/run/resolv.conf
-#     ln -s /etc/resolvconf/run/resolv.conf /etc/resolv.conf
-
-#     sync
-#     reboot
-#     sleep 10s
-#     exit 1
-# fi
+# Save dmidecode info
+dmidecode | grep UUID | cut -d ' ' -f 2 > /tmp/dmidecode_serial
 
 # Add some DNS servers to make domain lookup more likely
-needDns=0
-grep "Added at myNode startup" /etc/resolv.conf || needDns=1
-if [ $needDns = 1 ]; then
+if settings_file_exists "skip_backup_dns_servers" ; then
     echo '' >> /etc/resolv.conf
-    echo '# Added at myNode startup' >> /etc/resolv.conf
-    echo 'nameserver 1.1.1.1' >> /etc/resolv.conf
-    echo 'nameserver 208.67.222.222' >> /etc/resolv.conf
-    echo 'nameserver 8.8.8.8' >> /etc/resolv.conf
-    echo 'nameserver 8.8.4.4' >> /etc/resolv.conf
+    sed -i "s/^.*append domain-name-servers/#append domain-name-servers/g" /etc/dhcp/dhclient.conf || true
+else
+    needDns=0
+    grep "Added at myNode startup" /etc/resolv.conf || needDns=1
+    if [ $needDns = 1 ]; then
+        echo '' >> /etc/resolv.conf
+        echo '# Added at myNode startup' >> /etc/resolv.conf
+        echo 'nameserver 1.1.1.1' >> /etc/resolv.conf
+        echo 'nameserver 208.67.222.222' >> /etc/resolv.conf
+        echo 'nameserver 8.8.8.8' >> /etc/resolv.conf
+    fi
+    sed -i "s/^.*append domain-name-servers .*/append domain-name-servers 1.1.1.1, 208.67.222.222, 8.8.8.8;/g" /etc/dhcp/dhclient.conf || true
 fi
 
 # Disable autosuspend for USB drives
@@ -64,6 +60,32 @@ if [ ! -f /var/lib/mynode/.expanded_rootfs ]; then
         /usr/lib/armbian/armbian-resize-filesystem start
         touch /var/lib/mynode/.expanded_rootfs 
     fi
+    if [ $IS_X86 = 1 ]; then
+        X86_ROOT_PARTITION="$(mount | grep ' / ' | cut -d ' ' -f1)"
+        X86_DEVICE="$(lsblk -no pkname $X86_ROOT_PARTITION)"
+        X86_DEVICE_PATH="/dev/$X86_DEVICE"
+        X86_PARTITION_NUMBER=$(cat /proc/partitions | grep -c "${X86_DEVICE}[0-9]")
+        X86_FDISK_TYPE=$(fdisk -l "$X86_DEVICE_PATH" | grep "Disklabel")
+        echo "Root Partition:   $X86_ROOT_PARTITION"
+        echo "Root Device:      $X86_DEVICE"
+        echo "Root Dev Path:    $X86_DEVICE_PATH"
+        echo "Root Partition #: $X86_PARTITION_NUMBER"
+        if [[ "$X86_FDISK_TYPE" = *"Disklabel type: gpt"* ]]; then
+            if [ "$X86_PARTITION_NUMBER" = "2" ]; then
+                sgdisk -e $X86_DEVICE_PATH
+                sgdisk -d $X86_PARTITION_NUMBER $X86_DEVICE_PATH
+                sgdisk -N $X86_PARTITION_NUMBER $X86_DEVICE_PATH
+                partprobe $X86_DEVICE_PATH
+                resize2fs $X86_ROOT_PARTITION
+                touch /var/lib/mynode/.expanded_rootfs
+            else
+                echo "Not resizing - Expected 2 partitions, found $X86_PARTITION_NUMBER"
+            fi
+        else
+            echo "Not resizing - Expected GPT partition"
+            echo "$X86_FDISK"
+        fi
+    fi
 fi
 
 
@@ -72,11 +94,17 @@ mkdir -p /run/tor
 mkdir -p /var/run/tor
 mkdir -p /home/bitcoin/.mynode/
 mkdir -p /home/admin/.bitcoin/
+mkdir -p /etc/torrc.d
 chown admin:admin /home/admin/.bitcoin/
 rm -rf /etc/motd # Remove simple motd for update-motd.d
 
 mkdir -p /mnt/hdd
 mkdir -p /mnt/usb_extras
+
+# Add to python path
+[ -d /usr/local/lib/python2.7/dist-packages ] && echo "/var/pynode" > /usr/local/lib/python2.7/dist-packages/pynode.pth
+[ -d /usr/local/lib/python3.7/site-packages ] && echo "/var/pynode" > /usr/local/lib/python3.7/site-packages/pynode.pth
+[ -d /usr/local/lib/python3.8/site-packages ] && echo "/var/pynode" > /usr/local/lib/python3.8/site-packages/pynode.pth
 
 # Customize logo for resellers
 if [ -f /opt/mynode/custom/logo_custom.png ]; then
@@ -105,6 +133,8 @@ do
     chmod 644 /home/bitcoin/.mynode/mynode_serial
 done
 
+# Check for USB driver updates before mount or clone tool opening
+/usr/local/bin/python3 /usr/bin/mynode_usb_driver_check.py
 
 # Clone tool was opened
 if [ -f /home/bitcoin/open_clone_tool ]; then
@@ -136,6 +166,11 @@ if [ $IS_X86 = 0 ]; then
 fi
 rm -f /tmp/repairing_drive
 set -e
+
+# Delay startup for checking drives, etc..
+while [ -f /home/bitcoin/.mynode/delay_startup ]; do
+    sleep 5s
+done
 
 # Custom startup hook - pre-startup
 if [ -f /usr/local/bin/mynode_hook_pre_startup.sh ]; then
@@ -170,11 +205,11 @@ fi
 
 # Check drive usage
 mb_available=$(df --block-size=M /mnt/hdd | grep /dev | awk '{print $4}' | cut -d'M' -f1)
-if [ $mb_available -le 1200 ]; then
+while [ $mb_available -le 2000 ]; do
     echo "drive_full" > $MYNODE_STATUS_FILE
-    sleep 10s
+    sleep 60s
     mb_available=$(df --block-size=M /mnt/hdd | grep /dev | awk '{print $4}' | cut -d'M' -f1)
-fi
+done
 
 
 # Setup Drive
@@ -218,6 +253,7 @@ useradd -m -s /bin/bash joinmarket || true
 
 # User updates and settings
 adduser admin bitcoin
+adduser joinmarket bitcoin
 grep "joinmarket" /etc/sudoers || (echo 'joinmarket ALL=(ALL) NOPASSWD:ALL' | EDITOR='tee -a' visudo)
 
 # Regen SSH keys (check if force regen or keys are missing / empty)
@@ -266,34 +302,6 @@ done
 
 # Default QuickSync
 if [ ! -f /mnt/hdd/mynode/settings/.setquicksyncdefault ]; then
-    # # Default x86 to no QuickSync
-    # if [ $IS_X86 = 1 ]; then
-    #     touch /mnt/hdd/mynode/settings/quicksync_disabled
-    # fi
-    # # Default RockPro64 to no QuickSync
-    # if [ $IS_ROCKPRO64 = 1 ]; then
-    #     touch /mnt/hdd/mynode/settings/quicksync_disabled
-    # fi
-    # # Default SSD to no QuickSync
-    # DRIVE=$(cat /tmp/.mynode_drive)
-    # HDD=$(lsblk $DRIVE -o ROTA | tail -n 1 | tr -d '[:space:]')
-    # if [ "$HDD" = "0" ]; then
-    #     touch /mnt/hdd/mynode/settings/quicksync_disabled
-    # fi
-    # # If there is a USB->SATA adapter, assume we have an SSD and default to no QS
-    # set +e
-    # lsusb | grep "SATA 6Gb/s bridge"
-    # RC=$?
-    # set -e
-    # if [ "$RC" = "0" ]; then
-    #     touch /mnt/hdd/mynode/settings/quicksync_disabled
-    # fi
-    # # Default small drives to no QuickSync
-    # DRIVE_SIZE=$(df /mnt/hdd | grep /dev | awk '{print $2}')
-    # if (( ${DRIVE_SIZE} <= 900000000 )); then
-    #     touch /mnt/hdd/mynode/settings/quicksync_disabled
-    # fi
-
     # QuickSync defaults to disabled, needs to be manually enabled if wanted
     touch /mnt/hdd/mynode/settings/quicksync_disabled
     
@@ -304,6 +312,17 @@ fi
 # Migrate from version file to version+install combo
 /usr/bin/mynode_migrate_version_files.sh
 
+# Choose Network Prompt if no defaults are set (should happen only on first setup)
+if [ ! -f /mnt/hdd/mynode/settings/btc_network_settings_defaulted ] && 
+   [ ! -f /home/bitcoin/.mynode/btc_network_settings_defaulted ] &&
+   [ ! -f /mnt/hdd/mynode/settings/.btc_lnd_tor_enabled_defaulted ] && 
+   [ ! -f /home/bitcoin/.mynode/.btc_lnd_tor_enabled_defaulted ]; then
+    echo "choose_network" > $MYNODE_STATUS_FILE
+    while [ ! -f /mnt/hdd/mynode/settings/btc_network_settings_defaulted ]; do
+        sleep .25s
+    done
+fi
+echo "drive_mounted" > $MYNODE_STATUS_FILE
 
 # BTC Config
 source /usr/bin/mynode_gen_bitcoin_config.sh
@@ -380,18 +399,10 @@ if [ $IS_RASPI4 -eq 1 ]; then
 fi
 
 # RTL config
-# Moved to mynode_pre_rtl.sh
+# Moved to pre_rtl.sh
 
 # BTCPay Server Setup
-mkdir -p /opt/mynode/btcpayserver
-cp -n /usr/share/btcpayserver/env /opt/mynode/btcpayserver/.env
-cp -n /usr/share/btcpayserver/btcpay-env.sh /opt/mynode/btcpayserver/
-cp -n /usr/share/btcpayserver/docker-compose.generated.yml /opt/mynode/btcpayserver/
-cp -n /usr/share/btcpayserver/helpers.sh /opt/mynode/btcpayserver/
-if [ -f /opt/mynode/btcpayserver/.env ]; then
-    sed -i "s/BTCPAY_VERSION=.*/BTCPAY_VERSION=$BTCPAYSERVER_VERSION/g" /opt/mynode/btcpayserver/.env || true
-    sed -i "s/NBXPLORER_VERSION.*/NBXPLORER_VERSION=$BTCPAYSERVER_NBXPLORER_VERSION/g" /opt/mynode/btcpayserver/.env || true
-fi
+# Now in mynode_docker_images.sh (any new setup should go into pre_btcpayserver.sh)
 
 # LNBits Config
 if [ -d /opt/mynode/lnbits ]; then
@@ -488,7 +499,7 @@ fi
 chown -R joinmarket:joinmarket /mnt/hdd/mynode/joinmarket
 
 # Setup Mempool
-# Moved to mynode_pre_mempool.sh
+# Moved to pre_mempool.sh
 
 # Setup Netdata
 mkdir -p /opt/mynode/netdata
@@ -499,6 +510,10 @@ cp -f /usr/share/mynode/netdata.conf /opt/mynode/netdata/netdata.conf
 # Setup webssh2
 mkdir -p /opt/mynode/webssh2
 cp -f /usr/share/mynode/webssh2_config.json /opt/mynode/webssh2/config.json
+
+# Initialize Dynamic Apps
+mynode-manage-apps init || true
+mynode-manage-apps openports || true
 
 # Backup Tor files
 for f in /var/lib/tor/mynode*; do
@@ -535,6 +550,12 @@ echo "BTC_RPC_PASSWORD=$BTCRPCPW" > /mnt/hdd/mynode/settings/.btcrpc_environment
 chown bitcoin:bitcoin /mnt/hdd/mynode/settings/.btcrpc_environment
 if [ -f /mnt/hdd/mynode/bitcoin/bitcoin.conf ]; then
     sed -i "s/rpcauth=.*/$RPCAUTH/g" /mnt/hdd/mynode/bitcoin/bitcoin.conf
+fi
+if [ -f /mnt/hdd/mynode/dojo/docker/my-dojo/conf/docker-bitcoind.conf ]; then
+    sed -i "s/BITCOIND_RPC_PASSWORD=.*/BITCOIND_RPC_PASSWORD=$BTCRPCPW/g" /mnt/hdd/mynode/dojo/docker/my-dojo/conf/docker-bitcoind.conf
+fi
+if [ -f /mnt/hdd/mynode/dojo/docker/my-dojo/conf/docker-bitcoind.conf.tpl ]; then
+    sed -i "s/BITCOIND_RPC_PASSWORD=.*/BITCOIND_RPC_PASSWORD=$BTCRPCPW/g" /mnt/hdd/mynode/dojo/docker/my-dojo/conf/docker-bitcoind.conf.tpl
 fi
 
 
@@ -641,6 +662,8 @@ if [ "$USER" != "bitcoin" ]; then
 fi
 chown bitcoin:bitcoin /mnt/hdd/
 chown bitcoin:bitcoin /mnt/hdd/mynode/
+mkdir -p $LND_BACKUP_FOLDER
+chown -R bitcoin:bitcoin $LND_BACKUP_FOLDER
 
 
 # Setup swap on new HDD
@@ -675,49 +698,7 @@ fi
 #     fi
 #   fi
 # done
-STARTUP_MODIFIED=0
-if [ -f $ELECTRS_ENABLED_FILE ]; then
-    if systemctl status electrs | grep "disabled;"; then
-        systemctl enable electrs
-        STARTUP_MODIFIED=1
-    fi
-fi
-if [ -f $LNDHUB_ENABLED_FILE ]; then
-    if systemctl status lndhub | grep "disabled;"; then
-        systemctl enable lndhub
-        STARTUP_MODIFIED=1
-    fi
-fi
-if [ -f $BTCRPCEXPLORER_ENABLED_FILE ]; then
-    if systemctl status btcrpcexplorer | grep "disabled;"; then
-        systemctl enable btcrpcexplorer
-        STARTUP_MODIFIED=1
-    fi
-fi
-if [ -f $MEMPOOL_ENABLED_FILE ]; then
-    if systemctl status mempool | grep "disabled;"; then
-        systemctl enable mempool
-        STARTUP_MODIFIED=1
-    fi
-fi
-if [ -f $BTCPAYSERVER_ENABLED_FILE ]; then
-    if systemctl status btcpayserver | grep "disabled;"; then
-        systemctl enable btcpayserver
-        STARTUP_MODIFIED=1
-    fi
-fi
-if [ -f $VPN_ENABLED_FILE ]; then
-    if systemctl status vpn | grep "disabled;"; then
-        systemctl enable vpn
-        systemctl enable openvpn || true
-        STARTUP_MODIFIED=1
-    fi
-fi
-if [ $STARTUP_MODIFIED -eq 1 ]; then
-    sync
-    reboot
-    exit 0
-fi
+
 
 # Generate certificates
 echo "Generating certificates..."
@@ -739,14 +720,21 @@ systemctl restart nginx || true
 /usr/bin/mynode_update_latest_version_files.sh
 touch /tmp/need_application_refresh
 
+# Mark some internal app versions
+echo "v1.0" > /home/bitcoin/.mynode/tor_version
+echo "v1.0" > /home/bitcoin/.mynode/vpn_version
+echo "v1.0" > /home/bitcoin/.mynode/premium_plus_version
+
 # Weird hacks
 chmod +x /usr/bin/electrs || true # Once, a device didn't have the execute bit set for electrs
 timedatectl set-ntp True || true # Make sure NTP is enabled for Tor and Bitcoin
 rm -f /var/swap || true # Remove old swap file to save SD card space
 systemctl enable check_in || true
+systemctl enable premium_plus_connect || true
 systemctl enable bitcoin || true                # Make sure new bitcoin service is used
 systemctl disable bitcoind || true              # Make sure new bitcoin service is used
 rm /etc/systemd/system/bitcoind.service || true # Make sure new bitcoin service is used
+systemctl daemon-reload || true
 if [ -f /usr/share/joininbox/menu.update.sh ] && [ -f /home/joinmarket/menu.update.sh ]; then
     sudo -u joinmarket cp -f /usr/share/joininbox/menu.update.sh /home/joinmarket/menu.update.sh
 fi

@@ -1,4 +1,7 @@
+<!--
 <div class="main_header">Apps</div>
+-->
+<br/>
 
 <div class="app_tile_grid_container">    
     <!-- Dynamic App Display -->
@@ -6,7 +9,7 @@
         {% if app.is_installed and app.show_on_homepage and app.homepage_section == "apps" %}
             <div class="app_tile">
                 <div class="app_status_icon {% if app.can_enable_disable %}clear{% endif %}" id="{{app.short_name}}_status_icon"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/")}}{{app.short_name}}.png"/></div>
+                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/app_icons/")}}{{app.short_name}}.png"/></div>
                 {% if app.is_beta %}
                     <img class="app_beta_tag_image" src="{{ url_for('static', filename="images/beta.png")}}"/>
                 {% endif %}
@@ -21,12 +24,16 @@
                         {% if electrs_active or ( not electrs_active and not app.requires_electrs ) %}
                         {% if not is_installing_docker_images or ( is_installing_docker_images and not app.requires_docker_image_installation ) %}
                             {% if app.is_enabled or not app.can_enable_disable %}
-                                <a class="ui-button ui-widget ui-corner-all mynode_button" href="{{app.app_tile_button_href}}" id="{{app.short_name}}">{{app.app_tile_button_text}}</a>
+                                <a class="ui-button ui-widget ui-corner-all mynode_button"
+                                    {% if app.app_tile_button_onclick != "" %} onclick="{{app.app_tile_button_onclick|safe}}" {% endif %} 
+                                    href="{{app.app_tile_button_href}}"
+                                    id="{{app.short_name}}">{{app.app_tile_button_text}}</a>
                             {% endif %}
                             {% if app.can_enable_disable %}
-                                <a class="ui-button ui-widget ui-corner-all mynode_button" onclick="toggleEnabled('{{app.short_name}}')">
-                                    {% if app.is_enabled %}Disable{% else %}Enable{% endif %}
-                                </a>
+                                <!-- Only show enable on home page so only one button is displayed - more actions on manage apps page -->
+                                {% if not app.is_enabled %}
+                                    <a class="ui-button ui-widget ui-corner-all mynode_button" onclick="toggleEnabled('{{app.short_name}}', '{{app.name}}', true)">Enable</a>
+                                {% endif %}
                             {% endif %}
                         {% endif %}
                         {% endif %}
@@ -40,12 +47,12 @@
 
     <!-- App Store Icon -->
     <div class="app_tile">
-        <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/")}}apps.png"/></div>
+        <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/")}}marketplace2.png"/></div>
 
-        <div class="app_title">Applications</div>
+        <div class="app_title">Marketplace</div>
         <div class="app_status" id="marketplace_status">Manage Apps</div>
         <div class="app_contents">
-            <a class="ui-button ui-widget ui-corner-all mynode_button" href="/apps">Manage</a>
+            <a class="ui-button ui-widget ui-corner-all mynode_button" href="/marketplace">Open</a>
         </div>
     </div>
 </div>
@@ -54,13 +61,13 @@
 <!-- REMOTE SERVICES -->
 <div class="app_tile_row">
     <div>
-        <div class="main_header">Remote Access Services</div>
+        <div class="main_header">Remote Access</div>
             <div class="app_tile_row_section">
                 {% for app in apps %}
-                    {% if app.show_on_homepage and app.homepage_section == "remote_services" %}
+                    {% if app.is_installed and app.show_on_homepage and app.homepage_section == "remote_services" %}
                         <div class="app_tile">
                             <div class="app_status_icon {% if app.can_enable_disable %}clear{% endif %}" id="{{app.short_name}}_status_icon"></div>
-                            <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/")}}{{app.short_name}}.png"/></div>
+                            <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/app_icons/")}}{{app.short_name}}.png"/></div>
                             <div class="app_title">{{app.app_tile_name}}</div>
                             <div class="app_status"id="{{app.short_name}}_status"></div>
                             <div class="app_contents">
@@ -75,9 +82,9 @@
                                             <a class="ui-button ui-widget ui-corner-all mynode_button" href="{{app.app_tile_button_href}}" id="{{app.short_name}}">{{app.app_tile_button_text}}</a>
                                         {% endif %}
                                         {% if app.can_enable_disable %}
-                                            <a class="ui-button ui-widget ui-corner-all mynode_button" onclick="toggleEnabled('{{app.short_name}}')">
-                                                {% if app.is_enabled %}Disable{% else %}Enable{% endif %}
-                                            </a>
+                                            {% if not app.is_enabled %}
+                                                <a class="ui-button ui-widget ui-corner-all mynode_button" onclick="toggleEnabled('{{app.short_name}}', '{{app.name}}', true)">Enable</a>
+                                            {% endif %}
                                         {% endif %}
                                     {% endif %}
                                     {% endif %}

@@ -107,21 +107,6 @@
                     $("#copy_lit_password").show();
                 }
 
-                $('#watchtower_enabled_checkbox').change(function () {
-                    $("#watchtower_enabled_save").show();
-                });
-                $("#watchtower_enabled_save").on("click", function() {
-                    enabled=$('#watchtower_enabled_checkbox').is(":checked")
-                    if (enabled)
-                    {
-                        window.location.href='/lnd/set_watchtower_enabled?enabled=1'
-                    }
-                    else
-                    {
-                        window.location.href='/lnd/set_watchtower_enabled?enabled=0'
-                    }
-                });
-
                 function show_deposit_address(addr) {
                     $("#lnd_deposit_address_text").html( addr );
                     $("#lnd_deposit_address_qrcode").attr("src", "/api/get_qr_code_image?url="+addr);
@@ -159,8 +144,8 @@
 
     <body>
         {% include 'includes/logo_header.html' %}
-        <div class="mynode_back_div">
-            <a class="ui-button ui-widget ui-corner-all mynode_back" href="/"><span class="ui-icon ui-icon-home"></span>home&nbsp;</a>
+        <div class="mynode_top_left_div">
+            <a href="/"><img class="mynode_nav_icon" src="{{ url_for('static', filename="images/home.png")}}"/></a>
         </div>
 
         {% include 'includes/message_display.html' %}
@@ -257,17 +242,18 @@
 {% endif %}
 {% if wallet_exists %}
                         <tr>
-                            <th>TLS Certification</th>
+                            <th>TLS Certificate</th>
                             <td>
                                 <a class="ui-button ui-widget ui-corner-all mynode_button_small" style="width: 100px;" href="/lnd/tls.cert">download</a>
                                 <a class="ui-button ui-widget ui-corner-all mynode_button_small" style="width: 100px;" href="/lnd/regen_tls_cert">regenerate</a>
                             </td>
                         </tr>
                         <tr>
-                            <th>Macaroon Download</th>
+                            <th>Macaroons</th>
                             <td>
-                                <a class="ui-button ui-widget ui-corner-all mynode_button_small" id="admin_macaroon" href="/lnd/admin.macaroon">admin</a>
-                                <a class="ui-button ui-widget ui-corner-all mynode_button_small" id="readonly_macaroon" href="/lnd/readonly.macaroon">readonly</a>
+                                <a class="ui-button ui-widget ui-corner-all mynode_button_small" href="/lnd/admin.macaroon">admin</a>
+                                <a class="ui-button ui-widget ui-corner-all mynode_button_small" href="/lnd/readonly.macaroon">readonly</a>
+                                <a class="ui-button ui-widget ui-corner-all mynode_button_small" href="/lnd/invoice.macaroon">invoice</a>
                             </td>
                         </tr>
 {% endif %}
@@ -282,12 +268,7 @@
                         <tr>
                             <th>Watchtower</th>
                             <td>
-                                <label class="switch">
-                                    <input type="checkbox" id="watchtower_enabled_checkbox" {% if watchtower_enabled %}checked{% endif %}>
-                                    <span class="slider round"></span>
-                                </label>
-                                <br/>
-                                <button id="watchtower_enabled_save" style="display: none; margin-top: 5px;" class="ui-button ui-widget ui-corner-all settings_button_small">Save</button>
+                                <a class="ui-button ui-widget ui-corner-all mynode_button_small" style="width: 100px;" href="/lnd/watchtower">open</a>
                             </td>
                         </tr>
                         <tr>
@@ -304,10 +285,12 @@
                                 {{alias}}
                             </td>
                         </tr>
+                        <!--
                         <tr>
                             <th>Ports (gRPC/REST)</th>
                             <td>10009 / 10080</td>
                         </tr>
+                        -->
 {% endif %}
                     </table>
                 </div>
@@ -344,16 +327,6 @@
             <div class="info_tile">
                 <div class="info_tile_header">URI</div>
                 <div class="info_tile_contents" style="font-size: 12px;">{{uri}}</div>
-            </div>
-        </div>
-{% endif %}
-
-{% if wallet_logged_in and watchtower_enabled %}
-        <!-- URI Tile / Row -->
-        <div class="app_tile_row">
-            <div class="info_tile">
-                <div class="info_tile_header">Watchtower Server URI</div>
-                <div class="info_tile_contents" style="font-size: 12px;">{{watchtower_uri}}</div>
             </div>
         </div>
 {% endif %}
@@ -587,7 +560,7 @@
         <div class="app_tile_row">
             <div class="app_tile_short">
                 <div class="app_status_icon"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/rtl.png")}}"/></div>
+                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/app_icons/rtl.png")}}"/></div>
                 <div class="app_title">RTL</div>
                 <div class="app_status"></div>
                 <div class="app_contents">
@@ -598,7 +571,7 @@
 
             <div class="app_tile_short">
                 <div class="app_status_icon"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/thunderhub.png")}}"/></div>
+                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/app_icons/thunderhub.png")}}"/></div>
                 <div class="app_title">Thunderhub</div>
                 <div class="app_status"></div>
                 <div class="app_contents">
@@ -612,7 +585,7 @@
 
             <div class="app_tile_short">
                 <div class="app_status_icon"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/zap.png")}}"/></div>
+                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/app_icons/zap.png")}}"/></div>
                 <div class="app_title">Zap</div>
                 <div class="app_status"></div>
                 <div class="app_contents">
@@ -622,7 +595,7 @@
 
             <div class="app_tile_short">
                 <div class="app_status_icon"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/bluewallet.png")}}"/></div>
+                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/app_icons/bluewallet.png")}}"/></div>
                 <div class="app_title">BlueWallet</div>
                 <div class="app_status"></div>
                 <div class="app_contents">

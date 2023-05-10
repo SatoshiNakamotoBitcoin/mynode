@@ -6,10 +6,10 @@ Description=Glances
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/glances -w
+ExecStart=/usr/local/bin/glances -w
 User=root
 Group=root
-TimeoutSec=300
+TimeoutSec=120
 Restart=always
 RestartSec=60
 Nice=5

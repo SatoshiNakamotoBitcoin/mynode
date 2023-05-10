@@ -23,8 +23,11 @@ rm -f /mnt/hdd/mynode/settings/${APP}_version || true
 # Make sure app is marked for install
 if [ -f /home/bitcoin/.mynode/${APP}_version_latest ]; then
     touch /home/bitcoin/.mynode/install_${APP} || true
-else
+elif [ -f /mnt/hdd/mynode/settings/${APP}_version_latest ]; then
     touch /mnt/hdd/mynode/settings/install_${APP} || true
+else
+    # App is probably dynamic app (no version_latest file) so go ahead and mark sd card
+    touch /home/bitcoin/.mynode/install_${APP} || true
 fi
 
 # Custom re-install steps
@@ -34,8 +37,19 @@ elif [ "$APP" = "netdata" ]; then
     systemctl stop netdata
     docker rmi netdata/netdata || true
 elif [ "$APP" = "btcpayserver" ]; then
-    . "/opt/mynode/btcpayserver/btcpay-env.sh" && cd "$BTCPAY_BASE_DIRECTORY" && . helpers.sh && btcpay_remove
-    cd ~
+    # Stop and clean images
+    /usr/local/bin/btcpay-down.sh
+    /usr/local/bin/btcpay-clean.sh
+
+    # Remove files and data (don't remove volume for re-install)
+    rm -f /etc/profile.d/btcpay-env.sh
+    rm -rf /usr/local/bin/btcpay-*
+    rm -rf /usr/local/bin/changedomain.sh
+
+    # Finally remove main folder
+    rm -rf /mnt/hdd/mynode/btcpayserver
+elif [ "$APP" = "docker" ]; then
+    apt-get install --reinstall docker-ce
 elif [ "$APP" = "tor" ]; then
     apt-get remove -y tor
     apt-get install -y tor

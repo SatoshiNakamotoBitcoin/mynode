@@ -1,5 +1,30 @@
 #!/bin/bash
 
+# Setup default settings (new - 2022)
+if [ ! -f /mnt/hdd/mynode/settings/lnd_network_settings_defaulted ] && [ ! -f /home/bitcoin/.mynode/lnd_network_settings_defaulted ]; then
+
+    # based on old settings, set ipv4 or tor
+    if [ -f /mnt/hdd/mynode/settings/.btc_lnd_tor_enabled_defaulted ] || [ -f /home/bitcoin/.mynode/.btc_lnd_tor_enabled_defaulted ]; then
+        if [ -f /home/bitcoin/.mynode/btc_lnd_tor_enabled ] || [ -f /mnt/hdd/mynode/settings/btc_lnd_tor_enabled ]; then
+            # Old settings indicate tor only
+            touch /home/bitcoin/.mynode/lnd_tor_enabled
+            touch /mnt/hdd/mynode/settings/lnd_tor_enabled
+        else
+            # Old settings indicate ipv4 only
+            touch /home/bitcoin/.mynode/lnd_ipv4_enabled
+            touch /mnt/hdd/mynode/settings/lnd_ipv4_enabled
+        fi
+    else
+        # Set new defaults
+        touch /home/bitcoin/.mynode/lnd_tor_enabled
+        touch /mnt/hdd/mynode/settings/lnd_tor_enabled
+    fi
+
+    touch /mnt/hdd/mynode/settings/lnd_network_settings_defaulted
+    touch /home/bitcoin/.mynode/lnd_network_settings_defaulted
+    sync
+fi
+
 # Setup Initial LND Node Name
 if [ ! -f /mnt/hdd/mynode/settings/.lndalias ]; then
     echo "mynodebtc.com [myNode]" > /mnt/hdd/mynode/settings/.lndalias
@@ -13,16 +38,32 @@ else
     # Generate a default config
     cp -f /usr/share/mynode/lnd.conf /mnt/hdd/mynode/lnd/lnd.conf
 
-    # Append Tor/IP section
-    if [ -f /mnt/hdd/mynode/settings/.watchtower_enabled ]; then
+    # Append Watchtower Server Section
+    if [ -f /mnt/hdd/mynode/settings/watchtower_enabled ]; then
         cat /usr/share/mynode/lnd_watchtower.conf >> /mnt/hdd/mynode/lnd/lnd.conf
     fi
 
-    # Append Tor/IP section
-    if [ -f /mnt/hdd/mynode/settings/.btc_lnd_tor_enabled ]; then
+    # Append Watchtower Client Section
+    if [ -f /mnt/hdd/mynode/settings/watchtower_client_enabled ]; then
+        cat /usr/share/mynode/lnd_watchtower_client.conf >> /mnt/hdd/mynode/lnd/lnd.conf
+    fi
+
+    # Append Network Config (IPv4 / Tor)
+    if [ -f /mnt/hdd/mynode/settings/lnd_ipv4_enabled ] || [ -f /home/bitcoin/.mynode/lnd_ipv4_enabled ]; then
+        cat /usr/share/mynode/lnd_ipv4.conf >> /mnt/hdd/mynode/lnd/lnd.conf
+    else
+        cat /usr/share/mynode/lnd_no_ipv4.conf >> /mnt/hdd/mynode/lnd/lnd.conf
+    fi
+    if [ -f /mnt/hdd/mynode/settings/lnd_tor_enabled ] || [ -f /home/bitcoin/.mynode/lnd_tor_enabled ]; then
         cat /usr/share/mynode/lnd_tor.conf >> /mnt/hdd/mynode/lnd/lnd.conf
     else
-        cat /usr/share/mynode/lnd_ipv4.conf >> /mnt/hdd/mynode/lnd/lnd.conf
+        cat /usr/share/mynode/lnd_no_tor.conf >> /mnt/hdd/mynode/lnd/lnd.conf
+    fi
+
+
+    # Upadte LND Tor stream isolation (true is default)
+    if [ -f /mnt/hdd/mynode/settings/streamisolation_tor_disabled ]; then
+        sed -i "s/tor.streamisolation=.*/tor.streamisolation=false/g" /mnt/hdd/mynode/lnd/lnd.conf || true
     fi
 
     # Append Mainnet/Testnet section
@@ -39,6 +80,7 @@ if [ -f /var/lib/tor/mynode_lnd/hostname ]; then
     echo "[Application Options]" >> /mnt/hdd/mynode/lnd/lnd.conf
     ONION_URL=$(cat /var/lib/tor/mynode_lnd/hostname)
     echo "tlsextradomain=$ONION_URL" >> /mnt/hdd/mynode/lnd/lnd.conf
+    echo "tlsextradomain=host.docker.internal" >> /mnt/hdd/mynode/lnd/lnd.conf
     echo "" >> /mnt/hdd/mynode/lnd/lnd.conf
 fi
 

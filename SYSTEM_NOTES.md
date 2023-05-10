@@ -9,6 +9,20 @@ behavior. If this happens, try disabling some applications. Some examples of thi
   - The Bitcoin log may show numerous "RPC Work Queue" errors
   - Electrum may stop syncing at a specific block until the device is rebooted.
 
+## Device Specific Notes
+- Raspberry Pi 4 users who are still using a 32-bit based Operating System may not see all new application versions. They are encouraged to upgrade to a 64-bit OS by downloading a new 64-bit image from mynodebtc.com/download. Known
+differences are:
+ - BTC Pay Server versions are locked to v1.3.x
+ - grpcio is locked to v1.40.0 due to GLIBC compatibility
+ - LNDg requires a custom grpcio version, may cause issues
+ - Dojo is locked to v1.14.0
+ - Mempool is locked to v2.3.1
+
+## Data Drive Format
+- Choosing btrfs as the data drive format is still beta and may have issues
+ - btrfs may be slower than ext4
+ - The swapfile will not work with btrfs
+
 ## Testnet Toggle
 - Testnet can be enabled via the settings page. This is a great way to test various Bitcoin and Lightning applications. However, not all apps support testnet yet or have not been integrated within myNode to work on testnet. The following apps
 have support or patial support.
@@ -32,6 +46,7 @@ have support or patial support.
 ## BTC Pay Server
 
 - The upgrade button within BTC Pay Server will not work on myNode. Upgrades are performed as part of the myNode upgrade process.
+- On 32-bit ARM devices BTC Pay Server can only upgrade to version 1.3.6
 
 ## CKBunker
 
@@ -54,3 +69,7 @@ have support or patial support.
 
 - Specter authentication is off by default, but it will store and use its own password.
 - It is highly recommended to enable authentication.
+
+## LNDg
+
+- The default credentials for LNDg are "admin" / "bolt"

@@ -6,7 +6,7 @@ rootfs:
 	@./make_rootfs.sh
 
 .PHONY: rootfs_auto
-rootfs_auto:
+rootfs_auto: start_file_server
 	@./make_rootfs_auto.sh
 
 .PHONY: clean_rootfs
@@ -23,18 +23,6 @@ stop_file_server:
 	@/bin/bash scripts/stop_http_server.sh
 
 
-# Download Linux images
-out/linux_images/raspi_raspbian.zip:
-	@mkdir -p out/linux_images/
-	@wget https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2021-05-28/2021-05-07-raspios-buster-armhf-lite.zip -O out/linux_images/raspi_raspbian.zip
-out/linux_images/raspi_raspbian64.zip:
-	@mkdir -p out/linux_images/
-	@wget https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-2021-05-28/2021-05-07-raspios-buster-arm64-lite.zip -O out/linux_images/raspi_raspbian.zip
-out/linux_images/rock64_debian.7z:
-	@mkdir -p out/linux_images/
-	@wget https://dl.armbian.com/rock64/Debian_buster_default.7z -O out/linux_images/rock64_debian.7z
-download_linux_images: out/linux_images/raspi_raspbian.zip out/linux_images/raspi_raspbian64.zip out/linux_images/rock64_debian.7z
-
 
 # Download base myNode images
 out/base_images/raspi3_base.img.gz:
@@ -49,6 +37,9 @@ out/base_images/rock64_base.img.gz:
 out/base_images/rockpro64_base.img.gz:
 	@mkdir -p out/base_images/
 	@wget https://mynodebtc.com/device/mynode_images/rockpro64_base.img.gz -O out/base_images/rockpro64_base.img.gz
+out/base_images/rockpi4_base.img.gz:
+	@mkdir -p out/base_images/
+	@wget https://mynodebtc.com/device/mynode_images/rockpi4_base.img.gz -O out/base_images/rockpi4_base.img.gz
 out/base_images/debian_base.ova:
 	@mkdir -p out/base_images/
 	@wget https://mynodebtc.com/device/mynode_images/vm_base.ova -O out/base_images/debian_base.ova
@@ -99,7 +90,7 @@ release: clean_rootfs rootfs release.sh
 	@sh release.sh
 
 .PHONY: beta
-beta: clean_rootfs release.sh
+beta: clean_rootfs rootfs release.sh
 	@sh release.sh beta
 
 

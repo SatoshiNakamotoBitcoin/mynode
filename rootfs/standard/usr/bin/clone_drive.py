@@ -2,20 +2,18 @@
 import time
 import os
 import subprocess
-import signal
 import logging
-from threading import Thread
+from systemd import journal
+from utilities import *
+from drive_info import *
 
 log = logging.getLogger('mynode')
+log.addHandler(journal.JournaldLogHandler())
 log.setLevel(logging.INFO)
-
-def print_and_log(msg):
-    global log
-    print(msg)
-    log.info(msg)
+set_logger(log)
 
 def set_clone_state(state):
-    print_and_log("Clone State: {}".format(state))
+    log_message("Clone State: {}".format(state))
     try:
         with open("/tmp/.clone_state", "w") as f:
             f.write(state)
@@ -35,7 +33,7 @@ def reset_clone_rescan():
     os.system("rm /tmp/.clone_rescan")
 
 def set_clone_error(error_msg):
-    print_and_log("Clone Error: {}".format(error_msg))
+    log_message("Clone Error: {}".format(error_msg))
     try:
         with open("/tmp/.clone_error", "w") as f:
             f.write(error_msg)
@@ -49,74 +47,6 @@ def wait_on_clone_error_dismiss():
     while os.path.isfile("/tmp/.clone_error"):
         time.sleep(1)
 
-def get_drive_size(drive):
-    size = -1
-    try:
-        lsblk_output = subprocess.check_output(f"lsblk -b /dev/{drive} | grep disk", shell=True).decode("utf-8")
-        parts = lsblk_output.split()
-        size = int(parts[3])
-    except:
-        pass
-    print_and_log(f"Drive {drive} size: {size}")
-    return size
-
-
-def check_partition_for_mynode(partition):
-    is_mynode = False
-    try:
-        subprocess.check_output(f"mount -o ro /dev/{partition} /mnt/hdd", shell=True)
-        if os.path.isfile("/mnt/hdd/.mynode"):
-            is_mynode = True
-    except Exception as e:
-        # Mount failed, could be target drive
-        pass
-    finally:
-        time.sleep(1)
-        os.system("umount /mnt/hdd")
-
-    return is_mynode
-
-def find_partitions_for_drive(drive):
-    partitions = []
-    try:
-        ls_output = subprocess.check_output(f"ls /sys/block/{drive}/ | grep {drive}", shell=True).decode("utf-8") 
-        partitions = ls_output.split()
-    except:
-        pass
-    return partitions
-
-def is_drive_detected_by_fdisk(d):
-    detected = False
-    try:
-        # Command fails and throws exception if not mounted
-        ls_output = subprocess.check_output(f"fdisk -l /dev/{d}", shell=True).decode("utf-8")
-        detected = True
-    except:
-        pass
-    return detected
-
-def is_drive_mounted(d):
-    mounted = True
-    try:
-        # Command fails and throws exception if not mounted
-        ls_output = subprocess.check_output(f"grep -qs '/dev/{d}' /proc/mounts", shell=True).decode("utf-8") 
-    except:
-        mounted = False
-    return mounted
-
-def find_drives():
-    drives = []
-    try:
-        ls_output = subprocess.check_output("ls /sys/block/ | egrep 'hd.*|vd.*|sd.*|nvme.*'", shell=True).decode("utf-8") 
-        all_drives = ls_output.split()
-
-        # Only return drives that are not mounted (VM may have /dev/sda as OS drive)
-        for d in all_drives:
-            if is_drive_detected_by_fdisk(d) and not is_drive_mounted(d):
-                drives.append(d)
-    except:
-        pass
-    return drives
 
 def main():
     # Set initial state
@@ -130,13 +60,13 @@ def main():
     os.system("rm /tmp/.clone_target_drive_has_mynode")
 
     # Detect drives
-    drives = find_drives()
-    print_and_log(f"Drives: {drives}")
+    drives = find_unmounted_drives()
+    log_message(f"Drives: {drives}")
 
     # Check exactly two drives found
     drive_count = len(drives)
     if drive_count != 2:
-        print_and_log("Clone tool did not find 2 drives!")
+        log_message("Clone tool did not find 2 drives!")
         set_clone_state("error")
         set_clone_error("Clone tool needs 2 drives! Found {}.".format(drive_count))
         wait_on_clone_error_dismiss()
@@ -150,7 +80,7 @@ def main():
     both_drives_have_mynode = False
     for d in drives:
         partitions = find_partitions_for_drive(d)
-        print_and_log(f"Drive {d} paritions: {partitions}")
+        log_message(f"Drive {d} paritions: {partitions}")
 
         if len(partitions) == 0:
             # No partition found - must be target drive since its empty
@@ -189,7 +119,7 @@ def main():
                             mynode_drive = d
                         target_found = True
                     else:
-                        print_and_log(f"myNode Partition Found: {p}")
+                        log_message(f"myNode Partition Found: {p}")
                         mynode_drive = d
                         mynode_found = True
                 else:
@@ -203,11 +133,11 @@ def main():
                         target_drive = d
                 b = round(time.time() * 1000)
                 total_time = b - a
-                print_and_log(f"Checked partition {p} in {total_time}ms")
+                log_message(f"Checked partition {p} in {total_time}ms")
 
     # Successfully found source and target, wait for confirm
-    print_and_log(f"Source Drive: {mynode_drive}")
-    print_and_log(f"Target Drive: {target_drive}")
+    log_message(f"Source Drive: {mynode_drive}")
+    log_message(f"Target Drive: {target_drive}")
     if both_drives_have_mynode:
         os.system("touch /tmp/.clone_target_drive_has_mynode")
     os.system(f"echo {mynode_drive} > /tmp/.clone_source")
@@ -228,7 +158,7 @@ def main():
     os.system(f"umount /dev/{target_drive}1")
 
     # Update partitions (removes all + makes new without removing data)
-    print_and_log("Formatting Drive...")
+    log_message("Formatting Drive...")
     os.system("echo 'Formatting drive...' > /tmp/.clone_progress")
     subprocess.check_output(f"wipefs -a /dev/{target_drive}", shell=True)
     time.sleep(2)
@@ -236,13 +166,13 @@ def main():
     time.sleep(2)
 
     # Make new partition on dest drive
-    print_and_log("Creating Partition...")
+    log_message("Creating Partition...")
     os.system("echo 'Creating Partition...' > /tmp/.clone_progress")
     subprocess.check_output(f"mkfs.ext4 -F -L myNode /dev/{target_drive}1", shell=True)
     time.sleep(2)
 
     # Mounting Partitions
-    print_and_log("Mounting Partitions...")
+    log_message("Mounting Partitions...")
     os.system("echo 'Mounting Partitions...' > /tmp/.clone_progress")
     subprocess.check_output(f"mount /dev/{mynode_drive}1 /tmp/drive1", shell=True)
     subprocess.check_output(f"mount /dev/{target_drive}1 /tmp/drive2", shell=True)
@@ -254,7 +184,7 @@ def main():
         #cmd = ["dd","bs=512",f"if=/dev/zero",f"of=/dev/null","count=5999999","conv=sync,noerror"]
         cmd = ["rsync","-avxHAX","--info=progress2",f"/tmp/drive1/","/tmp/drive2/"]
         clone_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        print_and_log("CLONE PID: {}".format(clone_process.pid))
+        log_message("CLONE PID: {}".format(clone_process.pid))
         for l in clone_process.stdout:
             l = l.decode("utf-8")
             if 'xfr#' in l:
@@ -271,32 +201,32 @@ def main():
                     out_fd.write(logline)
                     out_fd.close()
                 except Exception as e:
-                    print_and_log("Write Exception: " + str(e))
+                    log_message("Write Exception: " + str(e))
 
         while clone_process.poll() is None:
             time.sleep(5)
-            print_and_log("Waiting on rsync exit...")
+            log_message("Waiting on rsync exit...")
 
-        print_and_log("CLONE RET CODE: {}".format(clone_process.returncode))
+        log_message("CLONE RET CODE: {}".format(clone_process.returncode))
         if clone_process.returncode != 0:
             # Clone had an error - log it
             if clone_process.stderr != None:
                 for l in clone_process.stderr:
-                    print_and_log("CLONE STDERR: "+l.decode("utf-8"))
+                    log_message("CLONE STDERR: "+l.decode("utf-8"))
             if clone_process.stdout != None:
                 for l in clone_process.stdout:
-                    print_and_log("CLONE STDOUT: "+l.decode("utf-8"))
+                    log_message("CLONE STDOUT: "+l.decode("utf-8"))
             set_clone_state("error")
             set_clone_error("Clone failed with return code {}".format(clone_process.returncode))
             wait_on_clone_error_dismiss()
             return
 
-        print_and_log("CLONE IS COMPLETE")
+        log_message("CLONE IS COMPLETE")
         time.sleep(2)
     except subprocess.CalledProcessError as e:
-        print_and_log("CalledProcessError")
-        print_and_log(e.stderr)
-        print_and_log(e.stdout)
+        log_message("CalledProcessError")
+        log_message(e.stderr)
+        log_message(e.stdout)
         set_clone_state("error")
         set_clone_error("Clone failed: {}".format(e))
         wait_on_clone_error_dismiss()
@@ -309,8 +239,8 @@ def main():
         
     # Complete - wait for reboot
     set_clone_state("complete")
-    print_and_log("Clone Complete!")
-    print_and_log("Waiting for reboot...")
+    log_message("Clone Complete!")
+    log_message("Waiting for reboot...")
     while True:
         time.sleep(60)
     
@@ -320,6 +250,6 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print_and_log("Exception: {}".format(str(e)))
+        log_message("Exception: {}".format(str(e)))
         set_clone_error("Exception: {}".format(str(e)))
         wait_on_clone_error_dismiss()

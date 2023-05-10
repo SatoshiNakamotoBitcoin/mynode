@@ -2,20 +2,20 @@
 import time
 import os
 import subprocess
-import signal
 import logging
-import random
-import string
 import json
 import atexit
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import pyudev
 from systemd import journal
 from threading import Thread
+from utilities import *
+from drive_info import *
 
 log = logging.getLogger('mynode')
 log.addHandler(journal.JournaldLogHandler())
 log.setLevel(logging.INFO)
+set_logger(log)
 
 ################################
 ## USB Device Cache
@@ -54,14 +54,8 @@ def write_usb_devices_json():
 ################################
 ## Utility Functions
 ################################
-
-def print_and_log(msg):
-    global log
-    print(msg)
-    log.info(msg)
-
 def set_usb_extras_state(state):
-    print_and_log("USB Extras State: {}".format(state))
+    log_message("USB Extras State: {}".format(state))
     try:
         with open("/tmp/.usb_extras_state", "w") as f:
             f.write(state)
@@ -71,71 +65,6 @@ def set_usb_extras_state(state):
         return False
     return False
 
-def get_drive_size(drive):
-    size = -1
-    try:
-        lsblk_output = subprocess.check_output(f"lsblk -b /dev/{drive} | grep disk", shell=True).decode("utf-8")
-        parts = lsblk_output.split()
-        size = int(parts[3])
-    except:
-        pass
-    print_and_log(f"Drive {drive} size: {size}")
-    return size
-
-def mount_partition(partition, folder_name, permissions="ro"):
-    try:
-        subprocess.check_output(f"mkdir -p /mnt/usb_extras/{folder_name}", shell=True)
-        subprocess.check_output(f"mount -o {permissions} /dev/{partition} /mnt/usb_extras/{folder_name}", shell=True)
-        return True
-    except Exception as e:
-        return False
-
-def unmount_partition(folder_name):
-    os.system(f"umount /mnt/usb_extras/{folder_name}")
-    os.system(f"rm -rf /mnt/usb_extras/{folder_name}")
-    time.sleep(1)
-
-def find_partitions_for_drive(drive):
-    partitions = []
-    try:
-        ls_output = subprocess.check_output(f"ls /sys/block/{drive}/ | grep {drive}", shell=True).decode("utf-8") 
-        partitions = ls_output.split()
-    except:
-        pass
-    return partitions
-
-def is_drive_detected_by_fdisk(d):
-    detected = False
-    try:
-        # Command fails and throws exception if not mounted
-        ls_output = subprocess.check_output(f"fdisk -l /dev/{d}", shell=True).decode("utf-8")
-        detected = True
-    except:
-        pass
-    return detected
-
-def is_drive_mounted(d):
-    mounted = True
-    try:
-        # Command fails and throws exception if not mounted
-        ls_output = subprocess.check_output(f"grep -qs '/dev/{d}' /proc/mounts", shell=True).decode("utf-8") 
-    except:
-        mounted = False
-    return mounted
-
-def find_unmounted_drives():
-    drives = []
-    try:
-        ls_output = subprocess.check_output("ls /sys/block/ | egrep 'hd.*|vd.*|sd.*|nvme.*'", shell=True).decode("utf-8") 
-        all_drives = ls_output.split()
-
-        # Only return drives that are not mounted (VM may have /dev/sda as OS drive)
-        for d in all_drives:
-            if is_drive_detected_by_fdisk(d) and not is_drive_mounted(d):
-                drives.append(d)
-    except:
-        pass
-    return drives
 
 ################################
 ## HTTP Server Functions
@@ -216,17 +145,17 @@ class OpendimeHandler(UsbDeviceHandler):
                             content = f.read()
                             if "This Opendime is fresh and unused. It hasn't picked a private key yet." in content:
                                 self.state = "new"
-                                print_and_log("  Opendime in state 'new'")
+                                log_message("  Opendime in state 'new'")
 
                     if os.path.isfile(private_key_file):
                         with open(private_key_file) as f:
                             content = f.read()
                             if "SEALED" in content:
                                 self.state = "sealed"
-                                print_and_log("  Opendime in state 'sealed'")
+                                log_message("  Opendime in state 'sealed'")
                             else:
                                 self.state = "unsealed"
-                                print_and_log("  Opendime in state 'unsealed'")
+                                log_message("  Opendime in state 'unsealed'")
 
                 except Exception as e:
                     self.state = "error_reading_opendime"
@@ -238,11 +167,11 @@ class OpendimeHandler(UsbDeviceHandler):
                 self.http_server_thread.start()
                 return True
             else:
-                print_and_log("Error mounting partition for opendime")
+                log_message("Error mounting partition for opendime")
                 return False
         except Exception as e:
             unmount_partition(self.folder_name)
-            print_and_log("Opendime Start Exception: {}".format(str(e)))
+            log_message("Opendime Start Exception: {}".format(str(e)))
             return False
 
     def stop(self):
@@ -251,7 +180,7 @@ class OpendimeHandler(UsbDeviceHandler):
                 self.http_server.shutdown()
             unmount_partition(self.folder_name)
         except Exception as e:
-            print_and_log("Opendime Stop Exception: {}".format(str(e)))
+            log_message("Opendime Stop Exception: {}".format(str(e)))
 
 ################################
 ## check_usb_devices()
@@ -267,47 +196,47 @@ def check_usb_devices():
 
         # Detect drives
         drives = find_unmounted_drives()
-        print_and_log(f"Drives: {drives}")
+        log_message(f"Drives: {drives}")
 
         # Check exactly one extra drive found
         drive_count = len(drives)
         if drive_count == 0:
-            print_and_log("No USB extras found.")
+            log_message("No USB extras found.")
         else:
             set_usb_extras_state("processing")
             for drive in drives:
                 # Check drive for partitions
                 drive = drives[0]
                 partitions = find_partitions_for_drive(drive)
-                print_and_log(f"Drive {drive} paritions: {partitions}")
+                log_message(f"Drive {drive} paritions: {partitions}")
 
                 num_partitions = len(partitions)
                 if num_partitions == 0:
-                    print_and_log("No partitions found. Nothing to do.")
+                    log_message("No partitions found. Nothing to do.")
                 elif num_partitions == 1:
                     # Process partition
                     partition = partitions[0]
-                    print_and_log("One partition found! Scanning...")
+                    log_message("One partition found! Scanning...")
                     if check_partition_for_opendime(partition):
-                        print_and_log("Found Opendime!")
+                        log_message("Found Opendime!")
                         opendime = OpendimeHandler(drive, partition)
                         if opendime.start():
                             add_usb_device(opendime)
                         else:
                             opendime.stop()
                     else:
-                        print_and_log(f"Drive {drive} could not be detected.")
+                        log_message(f"Drive {drive} could not be detected.")
                 else:
-                    print_and_log(f"{num_partitions} partitions found. Not sure what to do.")
+                    log_message(f"{num_partitions} partitions found. Not sure what to do.")
 
         # Successful scan post init or usb action detected, mark homepage refresh
         os.system("touch /tmp/homepage_needs_refresh")
             
     except Exception as e:
-        print_and_log("Exception: {}".format(str(e)))
+        log_message("Exception: {}".format(str(e)))
         set_usb_extras_state("error")
         reset_usb_devices()
-        print_and_log("Caught exception. Delaying 30s.")
+        log_message("Caught exception. Delaying 30s.")
         time.sleep(30)
 
 
@@ -328,29 +257,29 @@ def main():
     monitor = pyudev.Monitor.from_netlink(context)
     monitor.filter_by(subsystem='usb')
     # this is module level logger, can be ignored
-    print_and_log("Starting to monitor for usb")
+    log_message("Starting to monitor for usb")
     monitor.start()
-    print_and_log("Waiting on USB Event...")
+    log_message("Waiting on USB Event...")
     set_usb_extras_state("waiting")
     for device in iter(monitor.poll, None):
-        print_and_log("")
-        print_and_log("Got USB event: %s", device.action)
+        log_message("")
+        log_message("Got USB event: %s", device.action)
         if device.action == 'add':
             check_usb_devices()
         else:
             # HANDLE DEVICE REMOVAL BETTER? This resets all and re-scans
             reset_usb_devices()
             check_usb_devices()
-        print_and_log("Waiting on USB Event...")
+        log_message("Waiting on USB Event...")
         set_usb_extras_state("waiting")
     
 
 @atexit.register
 def goodbye():
-    print_and_log("ATEXIT: Resetting devices")
+    log_message("ATEXIT: Resetting devices")
     unmount_partition("*")
     reset_usb_devices()
-    print_and_log("ATEXIT: Done")
+    log_message("ATEXIT: Done")
 
 # This is the main entry point for the program
 if __name__ == "__main__":
@@ -359,8 +288,8 @@ if __name__ == "__main__":
             main()
         except Exception as e:
             set_usb_extras_state("error")
-            print_and_log("Main Exception: {}".format(str(e)))
-            print_and_log("Caught exception. Delaying 30s.")
+            log_message("Main Exception: {}".format(str(e)))
+            log_message("Caught exception. Delaying 30s.")
             unmount_partition("*")
             reset_usb_devices()
             time.sleep(30)

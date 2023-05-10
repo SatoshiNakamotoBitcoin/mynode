@@ -1,3 +1,194 @@
+=== v0.3.07 ===
+- Released: 12/22/22
+- Apply workaround for Bitcoin wallet migration issue
+- Improve port binding logic for Bitcoin when clearnet is enabled
+- Upgrade LNBits to v0.9.5.2
+
+=== v0.3.06 ===
+- Released: 12/18/22
+- Upgrade Bitcoin to v24.0.1
+- Upgrade LND to v0.15.5
+- Upgrade RTL to v0.13.2
+- Upgrade Thunderhub to v0.13.18
+- Upgrade BTC Pay to v1.7.2
+- Upgrade LNDg to v1.4.0
+- Upgrade Lily Wallet to v1.3.0
+- Upgrade Caravan to v0.3.14
+- Upgrade Jam to v0.1.4
+- Upgrade Specter to v1.14.1
+- Upgrade Pool vo v0.6.1
+- Upgrade Lit to v0.8.5
+- Upgrade BoS to v13.10.6
+- Enable NTP on Armbian platforms
+- Minor Bug Fixes
+
+=== v0.3.05 ===
+- Released: 11/11/22
+- Add Lilywallet
+- Upgrade electrs for aarch64 and arm32
+- Upgrade Loop to v0.20.2
+- Upgrade Pool to v0.6.0
+- Upgrade BTCPay to v1.6.12
+- Upgrade Jam to v0.1.3
+- Upgrade BoS to v13.5.1
+- Upgrade Sphinx Relay to v2.2.12
+- Upgrade Whirlpool to v0.10.16
+- Minor Bug Fixes
+
+=== v0.3.04 ===
+- Released: 11/01/22
+- Add Jam (v0.1.1)
+- Upgrade LND to v0.15.4
+- Upgrade LiT to v0.8.3
+- Upgrade Electrs to v0.9.9
+- Upgrade BoS to v13.1.4
+- Fix Warden Terminal installation issue
+- Improve LNBits connection consistency to LND
+
+=== v0.3.03 ===
+- Released: 10/09/22
+- Upgrade LND to v0.15.2
+- Resolves issue syncing LND to blockchain tip
+
+=== v0.3.02 ===
+- Released: 10/08/22
+- Add I2P Netowork Option
+- Upgrade LNBits to v0.9.4
+- Upgrade Specter to v1.13.0
+- Upgrade BTCPay Server to v1.6.11
+- Upgrade Thunderhub to v0.13.16
+- Upgrade Lightning Terminal to v0.8.0
+- Upgrade Pool to v0.5.8
+- Upgrade BoS to v13.0.2
+- Upgrade JoininBox to v0.7.3
+- Add network selection during setup
+- Minor bug fixes
+
+=== v0.3.01 ===
+- Released: 09/14/22
+- Add Tailscale VPN App
+- Add WeTTY Terminal App
+- Upgrade LND to v0.15.1
+- Upgrade LiT to v0.7.1
+- Upgrade BoS to 12.29.0
+- Upgrade JoininBox to v0.7.2
+- Upgrade RTL to v0.13.1
+- Upgrade BTCPay to v1.6.10
+- Upgrade Thunderhub to v0.13.15
+- Upgrade Specter to v1.12.0
+- Upgrade LNDg to v1.3.1
+- Adding community apps is a community edition feature
+- Minor bug fixes
+
+=== v0.3.0 ===
+- Released: 08/19/22
+- New App Marketplace
+- New Premium+ Service
+- New Software Development Kit (SDK)
+- Upgrade LND to v0.15.0
+- Upgrade BTCPay Server to v1.6.9
+- Upgrade LiT to v0.7.0
+- Upgrade Pool to v0.5.7
+- Upgrade Loop to v0.20.1
+- Web Interface Updates
+
+=== v0.2.57 ===
+- Released: 06/18/22
+- New logo!
+- New Customize App Version Interface
+- Upgrade Mempool to v2.4.0
+- Upgrade Specter to v1.10.2
+- Upgrade LNDg to v1.1.2
+- Upgrade BoS to v12.13.2
+- Upgrade PyBlock to v2.0.3
+- Improve Balance Randomization
+- Improve USB driver management
+- Fix Watchtower pubkey display
+- Fix LiT icon path
+- Add reset button for Watchtower client and server
+- Add setting for 
+- Add setting to allow all local network traffic (fixes NAT-PMP)
+
+=== v0.2.56 ===
+- Released: 06/01/22
+- Upgrade Bitcoin v23.0
+- Upgrade BTCPay to v1.5.4
+- Upgrade Thunderhub to v0.13.13
+- Upgrade Specter to v1.10.0
+- Upgrade Dojo to v1.15.0
+- Upgrade Whirlpool CLI to v0.10.15
+- Upgrade LNDg to v1.1.1
+- Upgrade SphinxRelay to v2.2.9
+- Upgrade JoininBox to v0.6.8
+- Upgrade BoS to 12.8.4
+- Improve add more details and warning when drive space is low
+- Add message encouraging RP4 32-bit users to upgrade to 64-bit
+- Dev: Better UEFI support
+- Dev: Improve SDK-based apps
+
+=== v0.2.55 ===
+- Released: 05/06/22
+- Add LNDg (beta)
+- Upgrade LND to v0.14.3
+- Upgrade Specter to v1.9.4
+- Upgrade BTC Pay to v1.5.1
+- Upgrade RTL to v0.12.3
+- Upgrade Thunderhub to v0.13.11
+- Upgrade Sphinx Relay to v2.2.8
+- Upgrade BoS to v12.7.0
+- Upgrade LiT to v0.6.7
+- Upgrade Pool to v0.5.6
+- Refactor BTC Pay Server Install
+- Add option to regenerate SSH keys
+- Add warning for subnet conflicts
+- Basic dynamic app support
+
+=== v0.2.54 ===
+- Released: 04/04/22
+- Add UI for LND Watchtower
+- Upgrade Loop to v0.18.0
+- Upgrade Lightning Terminal to v0.6.5
+- Upgrade Thunderhub to v0.13.10
+- Upgrade Specter to v1.9.1
+- Upgrade BTCPay Server to v1.4.9
+- Upgrade LNDManage to v0.14.1
+- Upgrade Sphinx Relay to v2.2.6
+- Upgrade BoS to v11.64.1
+- Update favicon
+- Resolve issue with RTL install
+- Resolve issue setting LND alias
+- Resolve issue toggling tor
+- Dev: More python refactoring
+
+=== v0.2.53 ===
+- Released: 03/07/22
+- Upgrade Dojo to v1.14.0
+- Upgrade Thunderhub to v0.13.7
+- Upgrade RTL to v0.12.2
+- Upgrade JoininBox to v0.6.7
+- Upgrade BTCPay Server to v1.4.7
+- Upgrade LiT to v0.6.4
+- Upgrade Pool to v0.5.5
+- Upgrade Netdata to v1.32.1
+- Upgrade BoS to v11.57.0
+- Devs: Migrate Web UI to Python3
+- Devs: Refactor Python Code to "PyNode"
+
+=== v0.2.52 ===
+- Released: 02/11/22
+- Upgrade LND to v0.14.2
+- Upgrade Loop to v0.17.0
+- Upgrade BTCPay Server to v1.4.4
+- Upgrade Specter to v1.8.1
+- Upgrade Whirlpool to v0.10.13
+- Upgrade BoS to v11.52.1
+- Improve QR code scanning
+- Add toggle for BIP37 and BIP157
+- Add UAS toggle for USB driver (RP4)
+- Fix: Prevent RPC password errors after resetting blockchain
+- Fix: Corsproxy now runs properly
+- Devs: Add toggle for Python3 web UI
+
 === v0.2.51 ===
 - Released: 01/28/22
 - Upgrade Mempool to v2.3.1

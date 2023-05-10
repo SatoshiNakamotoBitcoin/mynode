@@ -4,6 +4,8 @@
         {% include 'includes/head.html' %}
         <meta http-equiv="refresh" content="{{ refresh_rate }}">
 
+        <script src="{{ url_for('static', filename='js/manage_apps.js')}}"></script>
+
         <script>
             // Data
             var application_data = {};
@@ -19,53 +21,9 @@
             var lnd_last_btc_tx = "";
             var lnd_last_ln_tx = "";
             var price_data = {};
-
-            // Toggle enable/disable functions
-            function get_custom_enable_message(short_name) {
-                message = "";
-                if (short_name == "electrs") {
-                    message = "Enabling Electrum Server will take several days to fully sync for \
-                               the first time. Your myNode may run slowly during this period.";
-                } else if (short_name == "vpn") {
-                    message = "Enabling VPN will set your IP to a static IP rather than a dynamic one via DHCP. \
-                               The initial setup may take about an hour.";
-                } else if (short_name == "dojo") {
-                    message = "Enabling Dojo for the first time will reboot your device and install Dojo.";
-                }
-                if (message != "") {
-                    message += "<br/><br/>";
-                }
-                return message;
-            }
-
-            function toggleEnabled(short_name) {
-                enabled = application_data[short_name]["is_enabled"];
-                full_name = application_data[short_name]["name"];
-                
-                if ( enabled ) {
-                    // Disabling
-                    openConfirmDialog("confirm-dialog", 
-                                      "Disable "+full_name, 
-                                      "Are you sure you want to disable "+full_name+"?",
-                                       function(){
-                                            $( this ).dialog( "close" );
-                                            $('#loading_spinner_overlay').fadeIn();
-                                            window.location.href="/toggle-enabled?app="+short_name
-                                       });
-                } else {
-                    custom_message = "";
-                    // Enabling
-                    openConfirmDialog("confirm-dialog", 
-                                      "Enable "+full_name, 
-                                      get_custom_enable_message(short_name) +
-                                      "Are you sure you want to enable "+full_name+"?",
-                                       function(){
-                                            $( this ).dialog( "close" );
-                                            $('#loading_spinner_overlay').fadeIn();
-                                            window.location.href="/toggle-enabled?app="+short_name
-                                       });
-                }
-            }
+            var device_info = null;
+            var bitcoin_info = null;
+            var lnd_info = null;
 
             // Update status functions
             function update_status(status_name, data) {
@@ -97,34 +55,51 @@
                 }
             }
 
-            var price_display_rotate_count = 0;
-            function update_price_display() {
-                {% if ui_settings['price_ticker'] %}
+            var ticker_rotate_count = 0;
+            function update_ticker() {
+                display_options = [];
+                // Append price display options
                 if ("price" in price_data && "delta" in price_data && "direction" in price_data ) {
-                    $("#price_ticker").show();
-                    $("#price_ticker_text").slideUp('fast', function() {
-                        display_id = price_display_rotate_count % 3;
-                        if (display_id == 0) {
-                            p = price_data["price"].toLocaleString('en-US', {style: 'currency', currency: 'USD'});
-                            $("#price_ticker_text").html(p + " USD/BTC");
-                        } else if (display_id == 1) {
-                            sats = parseInt(100000000 / price_data["price"]);
-                            $("#price_ticker_text").html(sats + " SATS/USD");
-                        } else if (display_id == 2) { 
-                            p = Math.abs(price_data["delta"]).toLocaleString('en-US', {style: 'currency', currency: 'USD'});
-                            if (price_data["direction"] == "flat") {
-                                $("#price_ticker_text").html("Price is flat");
-                            } else if (price_data["direction"] == "up") {
-                                $("#price_ticker_text").html("Price is up "+p);
-                            } else if (price_data["direction"] == "down") {
-                                $("#price_ticker_text").html("Price is down "+p);
-                            }
-                        }
-                        $("#price_ticker_text").slideDown();
-                        price_display_rotate_count = price_display_rotate_count + 1;
-                    });
+                    p = price_data["price"].toLocaleString('en-US', {style: 'currency', currency: 'USD'});
+                    display_options.push(p + " USD/BTC")
+
+                    sats = parseInt(100000000 / price_data["price"]);
+                    display_options.push(sats + " SATS/USD")
+
+                    p = Math.abs(price_data["delta"]).toLocaleString('en-US', {style: 'currency', currency: 'USD'});
+                    if (price_data["direction"] == "flat") {
+                        direction_text = "Price is flat";
+                    } else if (price_data["direction"] == "up") {
+                        direction_text = "Price is up " + p;
+                    } else if (price_data["direction"] == "down") {
+                        direction_text = "Price is down " + p;
+                    }
+                    display_options.push(direction_text)
                 }
-                {% endif %}
+                // Append uptime option
+                if (device_info && "uptime" in device_info) {
+                    display_options.push("Online for " + device_info["uptime"])
+                }
+                // Append fees option
+                if (bitcoin_info && "recommended_fees" in bitcoin_info && bitcoin_info["recommended_fees"] != null) {
+                    display_options.push(bitcoin_info["recommended_fees"])
+                }
+
+                if (display_options.length == 0) {
+                    display_options.push("Loading...")
+                } else if (display_options.length == 1) {
+                    display_options.push("Welcome to myNode!")
+                    display_options.push("Enable Mempool or the Price Ticker to see more info here!")
+                }
+                    
+                // Display new ticker text
+                $("#ticker").show();
+                $("#ticker_text").slideUp('fast', function() {
+                    display_id = ticker_rotate_count % display_options.length;
+                    $("#ticker_text").html( display_options[display_id] );
+                    $("#ticker_text").slideDown();
+                    ticker_rotate_count = ticker_rotate_count + 1;
+                });
             }
 
             function update_sso_token(short_name, data) {
@@ -137,7 +112,11 @@
             }
 
             function refresh_page() {
-                window.location.href=location.protocol+'//'+location.hostname+"/";
+                p = ""
+                if ( location.port != "" && location.port != "80" && location.port != "443" ) {
+                    p = ":" + location.port
+                }
+                window.location.href=location.protocol+'//'+location.hostname+p+"/";
             }
 
             function need_to_update_tx_table(transactions, last_displayed_tx) {
@@ -207,17 +186,6 @@
                 }
                 showing_lightning_details = !showing_lightning_details;
             }
-
-            function open_new_mynode_tab(port, protocol="same") {
-                hostname=location.hostname
-                if (protocol == "same") {
-                    protocol = location.protocol
-                } else if (protocol == "http" || protocol == "https") {
-                    protocol = protocol + ":"
-                }
-                url = protocol+'//'+hostname+':'+port
-                window.open(url,'_blank');
-            }
             
 
             // Update page function
@@ -225,6 +193,7 @@
                 // Update Bitcoin Info
                 $.getJSON("/api/get_bitcoin_info", function( data ) {
                     //console.log("Bitcoin Data: " + JSON.stringify(data))
+                    bitcoin_info = data;
                     if ("current_block" in data && data["current_block"] != null) {
                         $("#current_block").html(data["current_block"]);
                     }
@@ -257,6 +226,7 @@
                 // Update Lightning Info
                 $.getJSON("/api/get_lightning_info", function( data ) {
                     //console.log("Lightning Data: " + JSON.stringify(data))
+                    lnd_info = data;
                     if ("channel_count" in data && data["channel_count"] != null) {
                         $("#lnd_channel_count").html(data["channel_count"]);
                     }
@@ -393,19 +363,19 @@
                 {% endfor %}
 
                 // Update price info
+                {% if ui_settings['price_ticker'] %}
                 $.getJSON("/api/get_price_info", function( data ) {
                     // console.log("Price Data: " + JSON.stringify(data))
                     if ("price" in data && data["price"] != null) {
                         price_data = data;
-                        if (price_display_rotate_count == 0) {
-                            update_price_display();
-                        }
                     }
                 });
+                {% endif %}
 
                 // Update device info
                 $.getJSON("/api/get_device_info", function( data ) {
                     //console.log("Device Data: " + JSON.stringify(data))
+                    device_info = data
                     if ("data_drive_usage" in data && data["data_drive_usage"] != null) {
                         $("#data_drive_usage").html(data["data_drive_usage"]);
                     }
@@ -446,13 +416,6 @@
             // Run when page ready
             $(document).ready(function() {
                 $( document ).tooltip();
-
-                function is_using_tor() {
-                    if (location.hostname.includes(".onion")) {
-                        return true;
-                    }
-                    return false;
-                }
 
                 $("#lit").on("click", function() {
                     url = 'https://'+location.hostname+':8443'
@@ -625,8 +588,10 @@
                 const update_interval = setInterval(update_page, 15000);
                 update_page();
 
-                // Rotate Price Ticker every 10 seconds
-                const rotate_ticker_interval = setInterval(update_price_display, 10000);
+                // Rotate Ticker every 6 seconds
+                const rotate_ticker_interval = setInterval(update_ticker, 8000);
+                setTimeout(update_ticker, 1500);
+                update_ticker();
 
                 // If pinned lightning, auto open lightning details
                 {% if lnd_wallet_exists and lnd_ready and ui_settings['pinned_lightning_details'] %}
@@ -640,24 +605,34 @@
         {% include 'includes/logo_header.html' %}
         
         <div class="mynode_top_left_div">
-            <!-- Nothing yet -->
-            {% if upgrade_available %}
-                <a class="ui-button ui-widget ui-corner-all mynode_back" href="/settings" title="Upgrade Available"><span class="ui-icon ui-icon-arrowthick-1-n"></span>upgrade available&nbsp;</a>
+            {% if product_key_skipped %}
+                <img class="mynode_nav_icon mynode_nav_icon_no_hover" title="Community Edition" src="{{ url_for('static', filename="images/mynode_community_icon.png")}}"/>
+            {% else %}
+                <img class="mynode_nav_icon mynode_nav_icon_no_hover" title="Premium" src="{{ url_for('static', filename="images/mynode_premium_icon.png")}}"/>
+            {% endif %}
+
+            {% if premium_plus_has_access_token %}
+                {% if premium_plus_is_connected %}
+                    <img class="mynode_nav_icon mynode_nav_icon_no_hover" title="Premium+ Active" src="{{ url_for('static', filename="images/mynode_premium_plus_icon.png")}}"/>
+                {% else %}
+                    <img class="mynode_nav_icon mynode_nav_icon_no_hover grayscale_image" title="Premium+ Disconnected" src="{{ url_for('static', filename="images/mynode_premium_plus_icon_disconnected.png")}}"/>
+                {% endif %}
             {% endif %}
         </div>
 
         <div class="mynode_top_right_div">
             {% if upgrade_available %}
-                <a class="ui-button ui-widget ui-corner-all mynode_back" href="/settings" title="Upgrade Available">&nbsp;<span class="ui-icon ui-icon-arrowthick-1-n"></span>&nbsp;</a>
+                <a href="/settings" title="Upgrade Available"><img class="mynode_nav_icon" src="{{ url_for('static', filename="images/upgrade.png")}}"/></a>
             {% endif %}
+
             {% if ui_settings['darkmode'] %}
-                <a class="ui-button ui-widget ui-corner-all mynode_back" href="/settings/toggle-darkmode-home" title="Disable Darkmode">&nbsp;<span class="ui-icon ui-icon-lightbulb"></span>&nbsp;</a>
+                <a href="/settings/toggle-darkmode-home" title="Disable Darkmode"><img class="mynode_nav_icon" src="{{ url_for('static', filename="images/lightbulb.png")}}"/></a>
             {% else %}
-                <a class="ui-button ui-widget ui-corner-all mynode_back" href="/settings/toggle-darkmode-home" title="Enable Darkmode">&nbsp;<span class="ui-icon ui-icon-lightbulb"></span>&nbsp;</a>
+                <a href="/settings/toggle-darkmode-home" title="Enable Darkmode"><img class="mynode_nav_icon" src="{{ url_for('static', filename="images/lightbulb.png")}}"/></a>
             {% endif %}
-            <a class="ui-button ui-widget ui-corner-all mynode_back" id="https" title="Use HTTPS" style="display: none;" href="#">&nbsp;<span class="ui-icon ui-icon-locked"></span>&nbsp;</a>
-            <a class="ui-button ui-widget ui-corner-all mynode_back" href="/logout" title="Logout"><span class="ui-icon ui-icon-close"></span>&nbsp;</a>
-            <a class="ui-button ui-widget ui-corner-all mynode_back" id="power_button" title="Reboot or Shutdown"><span class="ui-icon ui-icon-power"></span>&nbsp;</a> 
+            <a href="#" id="https" title="Use HTTPS" style="display: none;"><img class="mynode_nav_icon" src="{{ url_for('static', filename="images/https_lock.png")}}"/></a>
+            <a href="/logout" title="Logout"><img class="mynode_nav_icon" src="{{ url_for('static', filename="images/logout.png")}}"/></a>
+            <a href="#" id="power_button" title="Reboot or Shutdown"><img class="mynode_nav_icon" src="{{ url_for('static', filename="images/power.png")}}"/></a>
         </div> 
         
 
@@ -697,11 +672,10 @@
                     <li>One Click Upgrades!</li>
                     <li>VPN for Remote Access</li>
                     <li>Tor for Remote Access</li>
-                    <li>JoinMarket</li>
                     <li>Supports the Open Source Bitcoin Community</li>
                     <li>And more!</li>
                 </ul>
-                Upgrade now at <a target="_blank" href="https://mynodebtc.com/order/premium">mynodebtc.com</a>!
+                <a target="_blank" href="https://mynodebtc.com/order/premium">Upgrade now</a> or <a href="/product-key">add a key</a> for more features and support!
             </p>
         </div>
         {% endif %}
@@ -714,56 +688,52 @@
                 <div class="app_title">Settings</div>
                 <div class="app_status"></div>
                 <div class="app_contents">
-                    <a class="ui-button ui-widget ui-corner-all mynode_button" href="/apps">Applications</a>
                     <a class="ui-button ui-widget ui-corner-all mynode_button" href="/status">Status</a>
                     <a class="ui-button ui-widget ui-corner-all mynode_button" href="/settings">Settings</a>
                 </div>
             </div>
             <div class="app_tile">
                 <div class="app_status_icon"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/drive.png")}}"/></div>
-                <div class="app_title">Disk Usage</div>
+                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/apps.png")}}"/></div>
+                <div class="app_title">Applications</div>
                 <div class="app_status"></div>
-                <div class="app_contents"><div class="device_status_info" id="data_drive_usage">{{data_drive_usage}}</div></div>
+                <div class="app_contents">
+                    <a class="ui-button ui-widget ui-corner-all mynode_button" href="/apps">Manage</a>
+                </div>
             </div>
-            <div class="app_tile">
-                <div class="app_status_icon"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/cpu.png")}}"/></div>
-                <div class="app_title">CPU</div>
-                <div class="app_status"></div>
-                <div class="app_contents"><div class="device_status_info" id="device_cpu_usage">{{cpu_usage}}</div></div>
+            <div class="app_tile app_tile_device_info_container">
+                <div class="app_tile_device_info_block">
+                    <div class="app_tile_device_info_icon"><img class="app_tile_device_info_icon_img" src="{{ url_for('static', filename="images/temperature.png")}}"/></div>
+                    <div class="app_tile_device_info_name">Temperature</div>
+                    <div class="app_tile_device_info_value" id="device_temp">{{device_temp}}</div>
+                </div>
+                <div class="app_tile_device_info_block">
+                    <div class="app_tile_device_info_icon"><img class="app_tile_device_info_icon_img" src="{{ url_for('static', filename="images/cpu.png")}}"/></div>
+                    <div class="app_tile_device_info_name">CPU</div>
+                    <div class="app_tile_device_info_value" id="device_cpu_usage">{{cpu_usage}}</div>
+                </div>
+                <div class="app_tile_device_info_block">
+                    <div class="app_tile_device_info_icon"><img class="app_tile_device_info_icon_img" src="{{ url_for('static', filename="images/ram.png")}}"/></div>
+                    <div class="app_tile_device_info_name">RAM</div>
+                    <div class="app_tile_device_info_value" id="device_ram_usage">{{ram_usage}}</div>
+                </div>
+                <div class="app_tile_device_info_block">
+                    <div class="app_tile_device_info_icon"><img class="app_tile_device_info_icon_img" src="{{ url_for('static', filename="images/drive.png")}}"/></div>
+                    <div class="app_tile_device_info_name">OS Drive Usage</div>
+                    <div class="app_tile_device_info_value" id="os_drive_usage">{{os_drive_usage}}</div>
+                </div>
+                <div class="app_tile_device_info_block">
+                    <div class="app_tile_device_info_icon"><img class="app_tile_device_info_icon_img" src="{{ url_for('static', filename="images/drive.png")}}"/></div>
+                    <div class="app_tile_device_info_name">Data Drive Usage</div>
+                    <div class="app_tile_device_info_value" id="data_drive_usage">{{data_drive_usage}}</div>
+                </div>
+                <div class="app_tile_device_info_block">
+                    <div class="app_tile_device_info_icon"><img class="app_tile_device_info_icon_img" src="{{ url_for('static', filename="images/ram.png")}}"/></div>
+                    <div class="app_tile_device_info_name">Swap</div>
+                    <div class="app_tile_device_info_value" id="device_swap_usage">{{swap_usage}}</div>
+                </div>
             </div>
-            <div class="app_tile">
-                <div class="app_status_icon"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/ram.png")}}"/></div>
-                <div class="app_title">RAM</div>
-                <div class="app_status"></div>
-                <div class="app_contents"><div class="device_status_info" id="device_ram_usage">{{ram_usage}}</div></div>
-            </div>
-            <div class="app_tile" id="temp_tile" {% if device_temp == '...' %}style="display: none;"{% endif %}>
-                <div class="app_status_icon"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/temperature.png")}}"/></div>
-                <div class="app_title">Temperature</div>
-                <div class="app_status"></div>
-                <div class="app_contents"><div class="device_status_info" id="device_temp">{{device_temp}} &deg;C</div></div>
-            </div>
-            
-            <!--
-            <div class="app_tile">
-                <div class="app_status_icon"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/ram.png")}}"/></div>
-                <div class="app_title">Swap</div>
-                <div class="app_status"></div>
-                <div class="app_contents"><div class="drive_usage">{{swap_usage}}</div></div>
-            </div>
-            -->
         </div>
-
-        {% if product_key_skipped %}
-        <div class="main_page_warning_block">
-            <p style="text-align: center;"><b>Tip Address</b><br/>bc1q75z4fj946pqucfu9gasxdrzma0z4seh8f58sfd</p>
-        </div>
-        {% endif %}
 
         <div id="confirm-dialog"></div>
         <div id="info-dialog"></div>

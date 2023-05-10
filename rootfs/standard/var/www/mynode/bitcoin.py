@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, session, send_from_directory, abort, Markup, request, redirect, flash
+from flask import Blueprint, render_template, session, abort, Markup, request, redirect, flash
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from pprint import pprint, pformat
 from bitcoin_info import *
@@ -8,20 +8,11 @@ from subprocess import check_output, check_call
 from electrum_info import *
 from user_management import check_logged_in
 import socket
-import hashlib
 import json
 import time
 
 mynode_bitcoin = Blueprint('mynode_bitcoin',__name__)
 
-
-def runcmd(cmd):
-    cmd = "bitcoin-cli --conf=/home/admin/.bitcoin/bitcoin.conf --datadir=/mnt/hdd/mynode/bitcoin "+cmd+"; exit 0"
-    try:
-        results = subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
-    except Exception as e:
-        results = str(e)
-    return results
 
 def cleanup_download_wallets():
     os.system("rm -rf /tmp/download_wallets/*")
@@ -62,34 +53,17 @@ def bitcoin_status_page():
             #blocks = blocks[:5] # Take top 5
 
         # Peers
-        peers = []
-        if peerdata != None:
-            for p in peerdata:
-                peer = p
+        peers = peerdata
 
-                if "pingtime" in p:
-                    peer["pingtime"] =  int(p["pingtime"] * 1000)
-                else:
-                    peer["pingtime"] = "N/A"
-
-                if "bytessent" in p:
-                    peer["tx"] = "{:.2f}".format(float(p["bytessent"]) / 1000 / 1000)
-                else:
-                    peer["tx"] = "N/A"
-
-                if "bytesrecv" in p:
-                    peer["rx"] = "{:.2f}".format(float(p["bytesrecv"]) / 1000 / 1000)
-                else:
-                    peer["rx"] = "N/A"
-
-                peers.append(peer)
-
-        # Local address
-        local_address = "..."
+        # Bitcoin address
+        addresses = ["..."]
         if networkdata != None:
-            local_address = "not none"
+            addresses = ["no local addresses"]
             if ("localaddresses" in networkdata) and (len(networkdata["localaddresses"]) > 0):
-                local_address = "{}:{}".format(networkdata["localaddresses"][0]["address"], networkdata["localaddresses"][0]["port"])
+                addresses = []
+                for addr in networkdata["localaddresses"]:
+                    addresses.append("{}:{}".format(addr["address"], addr["port"]))
+
 
     except Exception as e:
         templateData = {
@@ -105,18 +79,20 @@ def bitcoin_status_page():
         "title": "myNode Bitcoin Status",
         "blocks": blocks,
         "peers": peers,
-        "local_address": local_address,
+        "addresses": addresses,
         "difficulty": get_bitcoin_difficulty(),
         "block_num": info["blocks"],
         "header_num": info["headers"],
         "rpc_password": rpc_password,
-        "disk_size": (int(info["size_on_disk"]) / 1000 / 1000 / 1000),
-        "mempool_tx": mempool["size"],
-        "mempool_size": "{:.3} MB".format(float(mempool["bytes"]) / 1000 / 1000),
+        "disk_usage": get_bitcoin_disk_usage(),
+        "mempool_tx": mempool["count"],
+        "mempool_size": mempool["display_bytes"],
         "is_testnet_enabled": is_testnet_enabled(),
         "wallets": walletdata,
         "bitcoin_whitepaper_exists": bitcoin_whitepaper_exists,
         "version": version,
+        "bip37_enabled": is_bip37_enabled(),
+        "bip157_enabled": is_bip157_enabled(),
         "bip158_enabled": is_bip158_enabled(),
         "ui_settings": read_ui_settings()
     }
@@ -132,7 +108,7 @@ def bitcoin_download_wallet():
 
     os.system("mkdir -p /tmp/download_wallets")
     os.system("chmod 777 /tmp/download_wallets")
-    runcmd("-rpcwallet='"+wallet_name+"' dumpwallet '/tmp/download_wallets/"+wallet_name+"'")
+    run_bitcoincli_command("-rpcwallet='"+wallet_name+"' dumpwallet '/tmp/download_wallets/"+wallet_name+"'")
 
     if not os.path.isfile("/tmp/download_wallets/"+wallet_name):
         flash("Error exporting wallet data for download", category="error")
@@ -141,12 +117,29 @@ def bitcoin_download_wallet():
     t = Timer(3.0, cleanup_download_wallets)
     t.start()
 
-    return send_from_directory(directory="/tmp/download_wallets/", filename=wallet_name, as_attachment=True)
+    return download_file(directory="/tmp/download_wallets/", filename=wallet_name)
+
+@mynode_bitcoin.route("/bitcoin/delete_wallet", methods=["GET"])
+def bitcoin_delete_wallet():
+    check_logged_in()
+    wallet_name = request.args.get('wallet')
+    if wallet_name is None:
+        flash("Error finding wallet to delete!", category="error")
+        return redirect("/bitcoin")
+
+    run_bitcoincli_command("unloadwallet {}".format(wallet_name))
+    run_linux_cmd("rm -rf /mnt/hdd/mynode/bitcoin/{}".format(wallet_name))
+
+    # Update wallet info
+    update_bitcoin_other_info()
+
+    flash("Wallet Deleted", category="message")
+    return redirect("/bitcoin")
 
 @mynode_bitcoin.route("/bitcoin/bitcoin_whitepaper.pdf")
 def bitcoin_whitepaper_pdf():
     check_logged_in()
-    return send_from_directory(directory="/mnt/hdd/mynode/bitcoin/", filename="bitcoin_whitepaper.pdf")
+    return download_file(directory="/mnt/hdd/mynode/bitcoin/", filename="bitcoin_whitepaper.pdf")
 
 @mynode_bitcoin.route("/bitcoin/reset_config")
 def bitcoin_reset_config_page():
@@ -207,7 +200,7 @@ def bitcoincli():
 
     # Load page
     templateData = {
-        "title": "myNode Bitcoin CLI",
+        "title": "myNode Bitcoin Terminal",
         "ui_settings": read_ui_settings()
     }
     return render_template('bitcoin_cli.html', **templateData)
@@ -218,8 +211,48 @@ def runcmd_page():
     
     if not request:
         return ""
-    response = runcmd(request.form['cmd'])
+    response = run_bitcoincli_command(request.form['cmd'])
     return response
+
+@mynode_bitcoin.route("/bitcoin/toggle_bip37")
+def bitcoin_toggle_bip37():
+    if request.args.get("enabled") and request.args.get("enabled") == "1":
+        enable_bip37()
+    else:
+        disable_bip37()
+
+    # Trigger reboot
+    t = Timer(1.0, reboot_device)
+    t.start()
+
+    # Wait until device is restarted
+    templateData = {
+        "title": "myNode Reboot",
+        "header_text": "Restarting",
+        "subheader_text": "This will take several minutes...",
+        "ui_settings": read_ui_settings()
+    }
+    return render_template('reboot.html', **templateData)
+
+@mynode_bitcoin.route("/bitcoin/toggle_bip157")
+def bitcoin_toggle_bip157():
+    if request.args.get("enabled") and request.args.get("enabled") == "1":
+        enable_bip157()
+    else:
+        disable_bip157()
+
+    # Trigger reboot
+    t = Timer(1.0, reboot_device)
+    t.start()
+
+    # Wait until device is restarted
+    templateData = {
+        "title": "myNode Reboot",
+        "header_text": "Restarting",
+        "subheader_text": "This will take several minutes...",
+        "ui_settings": read_ui_settings()
+    }
+    return render_template('reboot.html', **templateData)
 
 @mynode_bitcoin.route("/bitcoin/toggle_bip158")
 def bitcoin_toggle_bip158():

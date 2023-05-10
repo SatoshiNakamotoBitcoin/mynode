@@ -16,9 +16,11 @@ ufw allow 22    comment 'allow SSH'
 ufw allow 80    comment 'allow WWW'
 ufw allow 443   comment 'allow Secure WWW'
 ufw allow 1900  comment 'allow SSDP for UPnP discovery'
+ufw allow 2189  comment 'allow UPnP'
 ufw allow from 10.0.0.0/8 port 1900 to any      comment 'allow UPnP from router'
 ufw allow from 192.168.0.0/16 port 1900 to any  comment 'allow UPnP from router'
 ufw allow from 172.16.0.0/12 port 1900 to any   comment 'allow UPnP from router'
+ufw allow 9911  comment 'allow Lightning Watchtower'
 ufw allow 10009 comment 'allow Lightning gRPC'
 ufw allow 10080 comment 'allow Lightning REST RPC'
 ufw allow 9735  comment 'allow Lightning'
@@ -51,6 +53,7 @@ ufw allow 5000  comment 'allow LNBits'
 ufw allow 5001  comment 'allow LNBits HTTPS'
 ufw allow 5010  comment 'allow Warden Terminal'
 ufw allow 5011  comment 'allow Warden Terminal HTTPS'
+ufw allow 5351  comment 'allow NAT-PMP'
 ufw allow 5353  comment 'allow Avahi'
 ufw allow 8010:8019/tcp  comment 'allow USB Extras HTTP/HTTPS'
 ufw allow 8899  comment 'allow Whirlpool'
@@ -70,8 +73,26 @@ ufw allow 49393 comment 'allow BTCPay Server-direct HTTPS'
 ufw allow 51194 comment 'allow VPN'
 ufw allow 61208 comment 'allow Glances'
 ufw allow 61209 comment 'allow Glances HTTPS'
+ufw allow 62601 comment 'allow JoinMarket Orderbook'
+ufw allow 62602 comment 'allow JoinMarket Orderbook HTTPS'
+ufw allow 27183 comment 'allow JoinMarket API'
+ufw allow 28183 comment 'allow JoinMarket API'
 ufw allow from 127.0.0.1 comment 'allow from localhost'
 #ufw allow from ::1 comment 'allow from localhost'
+
+# Allow all local traffic
+if [ -f /mnt/hdd/mynode/settings/local_traffic_allowed ]; then
+    ufw allow from 10.0.0.0/8
+    ufw allow from 192.168.0.0/16
+    ufw allow from 172.16.0.0/12
+else
+    ufw delete allow from 10.0.0.0/8
+    ufw delete allow from 192.168.0.0/16
+    ufw delete allow from 172.16.0.0/12
+fi
+
+# Open ports for additional apps
+mynode-manage-apps openports
 
 # Enable UFW
 ufw --force enable

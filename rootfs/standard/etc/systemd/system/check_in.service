@@ -7,12 +7,15 @@ Wants=network-online.target
 After=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/python3 /usr/bin/mynode_check_in.py
+Type=simple
+KillMode=control-group
+ExecStart=/usr/local/bin/python3 /usr/bin/mynode_check_in.py -d 180 -i 24 --check-for-updates
 User=root
 Group=root
 StandardOutput=syslog
 StandardError=syslog
 SyslogIdentifier=mynode
+Restart=always
 RestartSec=30
 
 [Install]

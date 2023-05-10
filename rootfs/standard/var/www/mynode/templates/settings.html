@@ -58,6 +58,28 @@
                     delete_lnd_wallet_dialog.dialog( "open" );
                 });
 
+                $("#reset_lnd_watchtower_client").on("click", function() {
+                    var okFunction = function() {
+                        window.location.href="/settings/reset-lnd-watchtower?type=client"
+                    }
+                    openConfirmDialog("confirm-dialog",
+                                      "Reset Lightning Watchtower Client",
+                                      "Resetting the Lightning watchtower will erase watchtower settings and restart LND. "+
+                                      "Would you still like to reset Lightning watchtower?",
+                                      okFunction)
+                });
+
+                $("#reset_lnd_watchtower_server").on("click", function() {
+                    var okFunction = function() {
+                        window.location.href="/settings/reset-lnd-watchtower?type=server"
+                    }
+                    openConfirmDialog("confirm-dialog",
+                                      "Reset Lightning Watchtower Server",
+                                      "Resetting the Lightning watchtower will erase watchtower settings and restart LND. "+
+                                      "Would you still like to reset Lightning watchtower?",
+                                      okFunction)
+                });
+
 
                 function resetTor() {
                     $("#reset_tor_form").submit();
@@ -85,9 +107,19 @@
                 });
 
 
+                $("#reset_tor_connections").on("click", function() {
+                    var okFunction = function() {
+                        window.location.href="/settings/reset-tor-connections"
+                    }
+                    openConfirmDialog("confirm-dialog",
+                                      "Reset Tor Connections",
+                                      "Resetting the Lightning watchtower will erase watchtower settings and restart LND. "+
+                                      "Would you still like to reset Lightning watchtower?",
+                                      okFunction)
+                });
+
 
                 $("#reset-blockchain").on("click", function() {
-                    // Enable electrs
                     var okFunction = function() {
                         window.location.href="/settings/reset-blockchain"
                     }
@@ -99,8 +131,18 @@
                                       okFunction)
                 });
 
+                $("#reset-bitcoin-peers").on("click", function() {
+                    var okFunction = function() {
+                        window.location.href="/settings/reset-bitcoin-peers"
+                    }
+                    openConfirmDialog("confirm-dialog",
+                                      "Reset Bitcoin Peers",
+                                      "Resetting your Bitcoin peers will clear the peer database and reboot. " +
+                                      "Would you like to reset your peers?",
+                                      okFunction)
+                });
+
                 $("#restart-quicksync").on("click", function() {
-                    // Enable electrs
                     var okFunction = function() {
                         window.location.href="/settings/restart-quicksync"
                     }
@@ -110,6 +152,11 @@
                                       "the pre-synced blockchain. This will take a while.</p>"+
                                       "<p>Would you still like to restart QuickSync?</p>",
                                       okFunction)
+                });
+                $("#show_quicksync").on("click", function() {
+                    $("#show_quicksync").hide(0);
+                    $("#show_quicksync_message").hide(0);
+                    $("#quicksync_container").show();
                 });
 
                 $("#reboot-device").on("click", function() {
@@ -146,18 +193,6 @@
                                       okFunction)
                 });
 
-                $("#rescan-blockchain").on("click", function() {
-                    // Enable electrs
-                    var okFunction = function() {
-                        window.location.href="/settings/rescan-blockchain"
-                    }
-                    openConfirmDialog("confirm-dialog",
-                                      "Rescan Bitcoin Blockchain",
-                                      "This will take a few hours. " +
-                                      "Would you still like to rescan the bitcoin blockchain?",
-                                      okFunction)
-                });
-
                 $("#run-disk-benchmark").on("click", function() {
                     $("#run-disk-benchmark").prop("disabled",true);
                     $("#run-disk-benchmark-results").html("Loading...");
@@ -165,6 +200,17 @@
                         .done(function( data ) {
                             $("#run-disk-benchmark").prop("disabled",false);
                             $("#run-disk-benchmark-results").html( data["data"] );
+                        }
+                    );
+                });
+
+                $("#view-usb-info").on("click", function() {
+                    $("#view-usb-info").prop("disabled",true);
+                    $("#view-usb-info-results").html("Loading...");
+                    $.get("/api/get_usb_info")
+                        .done(function( data ) {
+                            $("#view-usb-info").prop("disabled",false);
+                            $("#view-usb-info-results").html( data["data"] );
                         }
                     );
                 });
@@ -212,7 +258,7 @@
                         }
                     },
                     open: function() {
-                        $("#password_factory_reset").val("")
+                        $("#password_format_external_drive").val("")
                     }
                 });
                 $("#format-external-drive").on("click", function() {
@@ -236,6 +282,26 @@
                     $("#product_key").show();
                 });
 
+                $("#show_os_drive_usage_details").on("click", function() {
+                    if($("#os_drive_usage_details").is(":visible")){
+                        $("#show_os_drive_usage_details").text("Show Details")
+                        $("#os_drive_usage_details").hide();
+                    } else {
+                        $("#show_os_drive_usage_details").text("Hide Details")
+                        $("#os_drive_usage_details").show();
+                    }
+                });
+
+                $("#show_data_drive_usage_details").on("click", function() {
+                    if($("#data_drive_usage_details").is(":visible")){
+                        $("#show_data_drive_usage_details").text("Show Details")
+                        $("#data_drive_usage_details").hide();
+                    } else {
+                        $("#show_data_drive_usage_details").text("Hide Details")
+                        $("#data_drive_usage_details").show();
+                    }
+                });
+
                 $("#show_mynode_changelog").on("click", function() {
                     if (showChangelog)
                     {
@@ -249,6 +315,17 @@
                         $("#mynode_changelog").show();
                         showChangelog=1;
                     }
+                });
+
+                $("#check_for_updates").on("click", function() {
+                    $('#loading_spinner_message').html("Checking...");
+                    $('#loading_spinner_overlay').fadeIn();
+                    window.location.href='/settings/get-latest-version'
+                });
+                $("#check_for_updates_beta").on("click", function() {
+                    $('#loading_spinner_message').html("Checking...");
+                    $('#loading_spinner_overlay').fadeIn();
+                    window.location.href='/settings/get-latest-version'
                 });
 
                 showing_upgrade_log=0;
@@ -298,6 +375,19 @@
                                     changes);
                         }
                     );
+                });
+
+                showing_info_table_advanced_rows=0;
+                $("#info_table_show_advanced_info").on("click", function() {
+                    if (showing_info_table_advanced_rows) {
+                        $("#info_table_show_advanced_info").html("Show");
+                        $(".info_table_advanced_row").hide();
+                        showing_info_table_advanced_rows = 0;
+                    } else {
+                        $("#info_table_show_advanced_info").html("Hide");
+                        $(".info_table_advanced_row").show();
+                        showing_info_table_advanced_rows = 1;
+                    }
                 });
 
                 $("#glances").on("click", function() {
@@ -415,57 +505,126 @@
                     window.location.href='/settings/modify-swap?size='+swap_choice
                 });
 
-                $('#btc_lnd_tor_checkbox').change(function () {
-                    $("#btc_lnd_tor").show();
+                $('#streamisolation_tor_checkbox').change(function () {
+                    $("#streamisolation_tor").show();
                 });
-                $("#btc_lnd_tor").on("click", function() {
-                    enabled=$('#btc_lnd_tor_checkbox').is(":checked")
-                    if (enabled)
+                $("#streamisolation_tor").on("click", function() {
+                    // This setting is inverted (uses disable flag)
+                    checked=$('#streamisolation_tor_checkbox').is(":checked")
+                    val = "1"
+                    if (checked)
                     {
-                        window.location.href='/settings/enable_btc_lnd_tor?enable=1'
+                        val = "0"
                     }
-                    else
+                    $('#loading_spinner_overlay').fadeIn();
+                    window.location.href='/settings/toggle_setting?name=streamisolation_tor_disabled&restart_service=lnd&enable='+val
+                });
+
+                $('#uas_usb_checkbox').change(function () {
+                    $("#uas_usb_button").show();
+                });
+                $("#uas_usb_button").on("click", function() {
+                    checked=$('#uas_usb_checkbox').is(":checked")
+                    val = "0"
+                    if (checked)
                     {
-                        window.location.href='/settings/enable_btc_lnd_tor?enable=0'
+                        val = "1"
                     }
+                    $('#loading_spinner_overlay').fadeIn();
+                    window.location.href='/settings/toggle_setting?name=uas_usb_enabled&reboot=1&enable='+val
                 });
 
                 $('#randomize_balances_checkbox').change(function () {
                     $("#randomize_balances_button").show();
                 });
                 $("#randomize_balances_button").on("click", function() {
-                    enabled=$('#randomize_balances_checkbox').is(":checked")
-                    if (enabled)
+                    checked=$('#randomize_balances_checkbox').is(":checked")
+                    val = "0"
+                    if (checked)
                     {
-                        window.location.href='/settings/enable_randomize_balances?enable=1'
+                        val = "1"
                     }
-                    else
+                    $('#loading_spinner_overlay').fadeIn();
+                    window.location.href='/settings/toggle_setting?name=randomize_balances&enable='+val
+                });
+
+                $('#hide_password_warning_checkbox').change(function () {
+                    $("#hide_password_warning_button").show();
+                });
+                $("#hide_password_warning_button").on("click", function() {
+                    checked=$('#hide_password_warning_checkbox').is(":checked")
+                    val = "0"
+                    if (checked)
                     {
-                        window.location.href='/settings/enable_randomize_balances?enable=0'
+                        val = "1"
                     }
+                    $('#loading_spinner_overlay').fadeIn();
+                    window.location.href='/settings/toggle_setting?name=hide_password_warning&enable='+val
+                });
+
+                $('#keep_bitcoin_debug_log_checkbox').change(function () {
+                    $("#keep_bitcoin_debug_log_button").show();
+                });
+                $("#keep_bitcoin_debug_log_button").on("click", function() {
+                    checked=$('#keep_bitcoin_debug_log_checkbox').is(":checked")
+                    val = "0"
+                    if (checked)
+                    {
+                        val = "1"
+                    }
+                    $('#loading_spinner_overlay').fadeIn();
+                    window.location.href='/settings/toggle_setting?name=keep_bitcoin_debug_log&restart_service=bitcoin&enable='+val
                 });
 
                 $('#https_forced_checkbox').change(function () {
                     $("#https_forced").show();
                 });
                 $("#https_forced").on("click", function() {
-                    enabled=$('#https_forced_checkbox').is(":checked")
-                    if (enabled)
+                    checked=$('#https_forced_checkbox').is(":checked")
+                    val = "0"
+                    if (checked)
                     {
-                        window.location.href='/settings/set_https_forced?forced=1'
+                        val = "1"
                     }
-                    else
+                    $('#loading_spinner_overlay').fadeIn();
+                    window.location.href='/settings/toggle_setting?name=https_forced&enable='+val
+                });
+
+                $('#local_traffic_allowed_checkbox').change(function () {
+                    $("#local_traffic_allowed").show();
+                });
+                $("#local_traffic_allowed").on("click", function() {
+                    checked=$('#local_traffic_allowed_checkbox').is(":checked")
+                    val = "0"
+                    if (checked)
                     {
-                        window.location.href='/settings/set_https_forced?forced=0'
+                        val = "1"
                     }
+                    $('#loading_spinner_overlay').fadeIn();
+                    window.location.href='/settings/toggle_setting?name=local_traffic_allowed&reboot=1&enable='+val
+                });
+
+                $('#skip_backup_dns_servers_checkbox').change(function () {
+                    $("#skip_backup_dns_servers").show();
+                });
+                $("#skip_backup_dns_servers").on("click", function() {
+                    checked=$('#skip_backup_dns_servers_checkbox').is(":checked")
+                    val = "0"
+                    if (checked)
+                    {
+                        val = "1"
+                    }
+                    $('#loading_spinner_overlay').fadeIn();
+                    window.location.href='/settings/toggle_setting?name=skip_backup_dns_servers&reboot=1&enable='+val
                 });
 
                 $('#btcrpcexplorer_token_checkbox').change(function () {
                     $("#btcrpcexplorer_token").show();
                 });
                 $("#btcrpcexplorer_token").on("click", function() {
-                    enabled=$('#btcrpcexplorer_token_checkbox').is(":checked")
-                    if (enabled)
+                    checked=$('#btcrpcexplorer_token_checkbox').is(":checked")
+                    $('#loading_spinner_overlay').fadeIn();
+                    if (checked)
                     {
                         window.location.href='/settings/btcrpcexplorer_token?enable=1'
                     }
@@ -475,19 +634,33 @@
                     }
                 });
 
+                $('#tor_repo_checkbox').change(function () {
+                    $("#tor_repo").show();
+                });
+                $("#tor_repo").on("click", function() {
+                    checked=$('#tor_repo_checkbox').is(":checked")
+                    // Inverted setting (uses disable flag)
+                    val = "1"
+                    if (checked)
+                    {
+                        val = "0"
+                    }
+                    $('#loading_spinner_overlay').fadeIn();
+                    window.location.href='/settings/toggle_setting?name=tor_repo_disabled&enable='+val
+                });
+
                 $('#aptget_tor_checkbox').change(function () {
                     $("#aptget_tor").show();
                 });
                 $("#aptget_tor").on("click", function() {
-                    enabled=$('#aptget_tor_checkbox').is(":checked")
-                    if (enabled)
+                    checked=$('#aptget_tor_checkbox').is(":checked")
+                    val = "0"
+                    if (checked)
                     {
-                        window.location.href='/settings/enable_aptget_tor?enable=1'
+                        val = "1"
                     }
-                    else
-                    {
-                        window.location.href='/settings/enable_aptget_tor?enable=0'
-                    }
+                    $('#loading_spinner_overlay').fadeIn();
+                    window.location.href='/settings/toggle_setting?name=torify_apt_get&enable='+val
                 });
             });
 
@@ -507,8 +680,8 @@
 
     <body>
         {% include 'includes/logo_header.html' %}
-        <div class="mynode_back_div">
-            <a class="ui-button ui-widget ui-corner-all mynode_back" href="/"><span class="ui-icon ui-icon-home"></span>home&nbsp;</a>
+        <div class="mynode_top_left_div">
+            <a href="/"><img class="mynode_nav_icon" src="{{ url_for('static', filename="images/home.png")}}"/></a>
         </div>
 
         <div class="main_header">Settings</div>
@@ -531,7 +704,7 @@
                     <th>Latest Version</th>
                     <td>{{latest_version}}</td>
                     <td>
-                        &nbsp;<a href="/settings/get-latest-version" class="ui-button ui-widget ui-corner-all settings_button_small">Check for Updates</a>
+                        &nbsp;<button id="check_for_updates" class="ui-button ui-widget ui-corner-all settings_button_small">Check for Updates</button>
                         &nbsp;<button id="show_upgrade_logs" class="ui-button ui-widget ui-corner-all settings_button_small">Show Upgrade Logs</button>
                     </td>
                 </tr>
@@ -664,6 +837,8 @@
             <form action="/settings/set-background" method="POST">
                 <select name="background" id="background">
                     <option value="none" {% if not ui_settings['background'] or ui_settings['background'] == "none" %}selected{% endif %}>None</option>
+                    <option value="digital" {% if ui_settings['background'] == "digital" %}selected{% endif %}>Digital</option>
+                    <option value="digital_mesh" {% if ui_settings['background'] == "digital_mesh" %}selected{% endif %}>Digital Mesh</option>
                     <option value="laser_eyes" {% if ui_settings['background'] == "laser_eyes" %}selected{% endif %}>Laser Eyes</option>
                     <option value="moon" {% if ui_settings['background'] == "moon" %}selected{% endif %}>Moon</option>
                 </select>
@@ -718,35 +893,72 @@
             <button id="reboot-device" class="ui-button ui-widget ui-corner-all settings_button">Reboot Device</button>
             <button id="shutdown-device" class="ui-button ui-widget ui-corner-all settings_button">Shutdown Device</button>
             
-            <div class="divider"></div>
-
-            <div class="settings_block_subheader">Download Debug Logs</div>
-            This will download all recent logs from your myNode. This can be helpful for debugging issues.
-            <br/>
-            It may take about one minute to gather and download the logs.
-            <br/>
-            Do not share these logs in a public place. They may contain sensitive information.
-            <br/>
-            <a href="/settings/mynode_logs.tar.gz" class="ui-button ui-widget ui-corner-all settings_button">Download Logs</a>
         </div>
 
 
         <div class="settings_block">
             <a id="firewall"></a>
-            <div class="settings_block_header">Firewall</div>
+            <div class="settings_block_header">Networking</div>
 
-            <div class="settings_block_subheader">Rules</div>
-            Show the current firewall configuration.
-            <br/>
-            <button id="show_firewall_rules" class="ui-button ui-widget ui-corner-all settings_button">Show</button>
-            <div id="firewall_rules" style='text-align: left; font-size: 12px; width: 800px; display: none;'><pre>{{firewall_rules}}</pre></div>
-            
-            <div class="divider"></div>
+            <div class="settings_block_subheader">Bitcoin and Lightning Networks</div>
+            You can use various networks for Bitcoin and Lightning. Tor and I2P increase privacy, however, they can slow down block download 
+            and cause less consistent connections.
+            <br/><br/>
+            Saving will trigger a reboot.
+            <br/><br/>
 
-            <div class="settings_block_subheader">Reset</div>
-            Resetting the firewall will disable and reenable the firewall and then reboot the device.
-            <br/>
-            <a href="/settings/reset-firewall" class="ui-button ui-widget ui-corner-all settings_button">Reset Firewall</a>
+            <form action="/settings/save-network-settings" method="POST">
+                <table border="0" style="font-size: 14px;">
+                    <tr>
+                        <td width="100px"></td>
+                        <td width="80px"><b>Clearnet</b></td>
+                        <td width="80px"><b>Tor</b></td>
+                        <td width="80px"><b>I2P</b></td>
+                    </tr>
+                    <tr>
+                        <td><b>Bitcoin</b></td>
+                        <td>
+                            <label class="switch">
+                                <input type="checkbox" name="btc_ipv4_checkbox" {% if is_btc_ipv4_enabled %}checked{% endif %}>
+                                <span class="slider round"></span>
+                            </label>
+                        </td>
+                        <td>
+                            <label class="switch">
+                                <input type="checkbox" name="btc_tor_checkbox" {% if is_btc_tor_enabled %}checked{% endif %}>
+                                <span class="slider round"></span>
+                            </label>
+                        </td>
+                        <td>
+                            <label class="switch">
+                                <input type="checkbox" name="btc_i2p_checkbox" {% if is_btc_i2p_enabled %}checked{% endif %}>
+                                <span class="slider round"></span>
+                            </label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><b>Lightning</b></td>
+                        <td>
+                            <label class="switch">
+                                <input type="checkbox" name="lnd_ipv4_checkbox" {% if is_lnd_ipv4_enabled %}checked{% endif %}>
+                                <span class="slider round"></span>
+                            </label>
+                        </td>
+                        <td>
+                            <label class="switch">
+                                <input type="checkbox" name="lnd_tor_checkbox" {% if is_lnd_tor_enabled %}checked{% endif %}>
+                                <span class="slider round"></span>
+                            </label>
+                        </td>
+                        <td>
+                            N/A
+                        </td>
+                    </tr>
+                </table>
+                
+                <br/>
+                <input type="submit" id="btc_lnd_networks_save" class="ui-button ui-widget ui-corner-all" value="Save"/>
+            </form>
 
         </div>
 
@@ -768,6 +980,13 @@
 
             <div class="divider"></div>
 
+            <div class="settings_block_subheader">Reset Peers</div>
+            If Bitcoin is having issues connecting, you can reset the peers database. This will reboot and allow Bitcoin to find a new set of peers.
+            <br/>
+            <button id="reset-bitcoin-peers" class="ui-button ui-widget ui-corner-all settings_button">Reset Peers</button>
+
+            <div class="divider"></div>
+
             <div class="settings_block_subheader">Reset Blockchain</div>
             If Bitcoin is having issues, you can reset the blockchain data. This will restart the initial block download and may take a long time.
             <br/>
@@ -775,12 +994,10 @@
 
             <div class="divider"></div>
 
-            <div class="settings_block_subheader">Rescan Blockchain</div>
-            Advanced: If you are having issues seeing transactions in your wallets, try re-scanning the blockchain. If you
-            are having issues parsing the Bitcoin blockchain or blocks cannot be found, please try reindexing. This will 
+            <div class="settings_block_subheader">Reindex Blockchain</div>
+            Advanced: If you are having issues parsing the Bitcoin blockchain or blocks cannot be found, please try reindexing. This will 
             take a long time.
             <br/>
-            <button id="rescan-blockchain" class="ui-button ui-widget ui-corner-all settings_button">Rescan Blockchain</button>
             <button id="reindex-blockchain" class="ui-button ui-widget ui-corner-all settings_button">Reindex Blockchain</button>
 
         </div>
@@ -815,6 +1032,15 @@
             Advanced: This will delete your Lightning Wallet. It will delete both mainnet and testnet wallets if you have them.
             <br/>
             <button id="delete_lnd_wallet" class="ui-button ui-widget ui-corner-all settings_button">Delete Wallet</button>
+
+            <div class="divider"></div>
+
+            <div class="settings_block_subheader">Reset Watchtower Info</div>
+            Advanced: This will reset the Watchtower information. This can be used if LND is having issues after adding watchtowers.
+            <br/>
+            <button id="reset_lnd_watchtower_client" class="ui-button ui-widget ui-corner-all settings_button">Reset Watchtower Client</button>
+            <button id="reset_lnd_watchtower_server" class="ui-button ui-widget ui-corner-all settings_button">Reset Watchtower Server</button>
+
         </div>
 
 
@@ -887,21 +1113,72 @@
 
 
         <div class="settings_block">
-            <a id="tor"></a>
-            <div class="settings_block_header">Tor</div>
+            <a id="firewall"></a>
+            <div class="settings_block_header">Firewall</div>
 
-            <div class="settings_block_subheader">Use Tor for Bitcoin and Lightning</div>
-            You can use Tor for Bitcoin and Lightning to increase privacy. However, it can slow down block download, 
-            especially during IBD. If you have customized your Bitcoin or LND config, this setting has no effect.
-            <br/><br/>
-            Saving will trigger a reboot.
+            <div class="settings_block_subheader">Firewall Rules</div>
+            Show the current firewall configuration.
+            <br/>
+            <button id="show_firewall_rules" class="ui-button ui-widget ui-corner-all settings_button">Show</button>
+            <div id="firewall_rules" style='text-align: left; font-size: 12px; width: 800px; display: none;'><pre>{{firewall_rules}}</pre></div>
+            
+            <div class="divider"></div>
+
+            <div class="settings_block_subheader">Reset Firewall</div>
+            Resetting the firewall will disable and reenable the firewall and then reboot the device.
+            <br/>
+            <a href="/settings/reset-firewall" class="ui-button ui-widget ui-corner-all settings_button">Reset Firewall</a>
+
+            <div class="divider"></div>
+
+            <div class="settings_block_subheader">Allow All Local Network Traffic</div>
+            This will allow all local network traffic from 10.0.0.0/8, 192.168.0.0/16, and 172.16.0.0/12. This can be
+            helpful if you are having NAT-PMP or UPnP issues with LND. This will reboot the device.
             <br/><br/>
             <label class="switch">
-                <input type="checkbox" id="btc_lnd_tor_checkbox" {% if is_btc_lnd_tor_enabled %}checked{% endif %}>
+                <input type="checkbox" id="local_traffic_allowed_checkbox" {% if is_local_traffic_allowed %}checked{% endif %}>
                 <span class="slider round"></span>
             </label>
             <br/><br/>
-            <button id="btc_lnd_tor" style="display: none;" class="ui-button ui-widget ui-corner-all settings_button_small">Save</button>
+            <button id="local_traffic_allowed" style="display: none;" class="ui-button ui-widget ui-corner-all settings_button_small">Save</button>
+
+            <div class="divider"></div>
+
+            <div class="settings_block_subheader">Skip Backup DNS Servers</div>
+            Some backup DNS servers are configured if your network does not give your device any. They are used as backup. If you do not want any backup DNS servers configured, enable this.
+            <br/><br/>
+            <label class="switch">
+                <input type="checkbox" id="skip_backup_dns_servers_checkbox" {% if skip_backup_dns_servers %}checked{% endif %}>
+                <span class="slider round"></span>
+            </label>
+            <br/><br/>
+            <button id="skip_backup_dns_servers" style="display: none;" class="ui-button ui-widget ui-corner-all settings_button_small">Save</button>
+
+        </div>
+
+
+        <div class="settings_block">
+            <a id="tor"></a>
+            <div class="settings_block_header">Tor</div>
+
+            <div class="settings_block_subheader">Reset Tor Connections</div>
+            If your Tor performance is poor, you can reset your tor connections. Tor will be restarted with new connections.
+            <br/>
+            <button id="reset_tor_connections" class="ui-button ui-widget ui-corner-all settings_button">Reset Tor Connections</button>
+
+            <div class="divider"></div>
+
+            <div class="settings_block_subheader">Upgrade Tor</div>
+            During upgrades, the tor package is updated. In some locations, this can fail causing upgrade issues.
+            <br/><br/>
+            This should not be disabled unless you are having a specific upgrade issue accessing some package servers.
+            <br/><br/>
+            <label class="switch">
+                <input type="checkbox" id="tor_repo_checkbox" {% if is_tor_repo_enabled %}checked{% endif %}>
+                <span class="slider round"></span>
+            </label>
+            <br/><br/>
+            <button id="tor_repo" style="display: none;" class="ui-button ui-widget ui-corner-all settings_button_small">Save</button>
 
             <div class="divider"></div>
 
@@ -918,27 +1195,27 @@
             <button id="aptget_tor" style="display: none;" class="ui-button ui-widget ui-corner-all settings_button_small">Save</button>
 
             <div class="divider"></div>
+
+            {% if is_lnd_tor_enabled %}
+            <div class="settings_block_subheader">Use Tor Stream Isolation for LND</div>
+            When using tor, enable stream isolation for LND. This increases privacy, but it can take significant resources with large numbers of lightning channels.
+            <br/><br/>
+            This is not recommended to disable unless you are having lnd issues with many channels.
+            <br/><br/>
+            <label class="switch">
+                <input type="checkbox" id="streamisolation_tor_checkbox" {% if is_streamisolation_tor_enabled %}checked{% endif %}>
+                <span class="slider round"></span>
+            </label>
+            <br/><br/>
+            <button id="streamisolation_tor" style="display: none;" class="ui-button ui-widget ui-corner-all settings_button_small">Save</button>
+
+            <div class="divider"></div>
+            {% endif %}
             
-            <div class="settings_block_subheader">Reset Tor</div>
+            <div class="settings_block_subheader">Reset Tor Data</div>
             This will reset all of your Tor service settings and regenerate your Onion URLs.
             <br/>
             <button id="reset_tor" class="ui-button ui-widget ui-corner-all settings_button">Reset Tor</button>
-
-        </div>
-
-
-        <div class="settings_block">
-            <a id="services"></a>
-            <div class="settings_block_header">Services</div>
-            
-            <div class="settings_block_subheader">Netdata</div>
-            This will enable or disable Netdata device monitoring.
-            <br/>
-            {% if netdata_enabled %}
-                <a href="/settings/toggle-netdata" class="ui-button ui-widget ui-corner-all settings_button">Disable</a>
-            {% else %}
-                <a href="/settings/toggle-netdata" class="ui-button ui-widget ui-corner-all settings_button">Enable</a>
-            {% endif %}
 
         </div>
 
@@ -958,48 +1235,54 @@
             <a id="quicksync"></a>
             <div class="settings_block_header">QuickSync</div>
 
-            <div class="settings_block_subheader">Toggle QuickSync</div>
             {% if is_quicksync_disabled %}
-                Enabling QuickSync will help speed up syncing only during the initial block download period by downloading a pre-validated copy of the blockchain. It is no longer recommended.
-                <br/>
-                <a href="/settings/toggle-quicksync" class="ui-button ui-widget ui-corner-all settings_button">Enable QuickSync</a>
-            {% else %}
-                Disabling QuickSync will remove the QuickSync files and stop the process. This may save significant disk space.
-                <br/>
-                <a href="/settings/toggle-quicksync" class="ui-button ui-widget ui-corner-all settings_button">Disable QuickSync</a>
+            <p id="show_quicksync_message">QuickSync is no longer recommended.</p>
+            <button id="show_quicksync" class="ui-button ui-widget ui-corner-all settings_button">Show QuickSync Settings</button>
             {% endif %}
+            <div id="quicksync_container" {% if is_quicksync_disabled %}style="display: none;"{%endif%}>
+                <div class="settings_block_subheader">Toggle QuickSync</div>
+                {% if is_quicksync_disabled %}
+                    Enabling QuickSync will help speed up syncing only during the initial block download period by downloading a pre-validated copy of the blockchain. It is no longer recommended.
+                    <br/>
+                    <a href="/settings/toggle-quicksync" class="ui-button ui-widget ui-corner-all settings_button">Enable QuickSync</a>
+                {% else %}
+                    Disabling QuickSync will remove the QuickSync files and stop the process. This may save significant disk space.
+                    <br/>
+                    <a href="/settings/toggle-quicksync" class="ui-button ui-widget ui-corner-all settings_button">Disable QuickSync</a>
+                {% endif %}
 
-            {% if not is_quicksync_disabled %}
-            <div class="divider"></div>
+                {% if not is_quicksync_disabled %}
+                <div class="divider"></div>
 
-            <div class="settings_block_subheader">Restart QuickSync</div>
-            This will reset Bitcoin and redownload the blockchain via QuickSync.
-            <br/>
-            <button id="restart-quicksync" class="ui-button ui-widget ui-corner-all settings_button">Restart QuickSync</button>
-
-            <div class="divider"></div>
-
-            <div class="settings_block_subheader">QuickSync Rates</div>
-            You can control the background upload and download rates for QuickSync. This helps the myNode network.
-            <br/>
-
-            <form action="/settings/quicksync_rates" method="POST">
-                <p><b>Download Rate</b></p>
-                <div id="download-slider">
-                    <div id="download-handle" class="quicksync-handle ui-slider-handle "></div>
-                </div>
-                <input type="hidden" id="download-rate" name="download-rate"/>
-
-                <p><b>Upload Rate</b></p>
-                <div id="upload-slider">
-                    <div id="upload-handle" class="quicksync-handle ui-slider-handle"></div>
-                </div>
-                <input type="hidden" id="upload-rate" name="upload-rate"/>
-                
+                <div class="settings_block_subheader">Restart QuickSync</div>
+                This will reset Bitcoin and redownload the blockchain via QuickSync.
                 <br/>
-                <input type="submit" id="quicksync_rates_submit" value="Save" class="ui-button ui-widget ui-corner-all settings_button"/>
-            </form>
-            {% endif %}
+                <button id="restart-quicksync" class="ui-button ui-widget ui-corner-all settings_button">Restart QuickSync</button>
+
+                <div class="divider"></div>
+
+                <div class="settings_block_subheader">QuickSync Rates</div>
+                You can control the background upload and download rates for QuickSync. This helps the myNode network.
+                <br/>
+
+                <form action="/settings/quicksync_rates" method="POST">
+                    <p><b>Download Rate</b></p>
+                    <div id="download-slider">
+                        <div id="download-handle" class="quicksync-handle ui-slider-handle "></div>
+                    </div>
+                    <input type="hidden" id="download-rate" name="download-rate"/>
+
+                    <p><b>Upload Rate</b></p>
+                    <div id="upload-slider">
+                        <div id="upload-handle" class="quicksync-handle ui-slider-handle"></div>
+                    </div>
+                    <input type="hidden" id="upload-rate" name="upload-rate"/>
+                    
+                    <br/>
+                    <input type="submit" id="quicksync_rates_submit" value="Save" class="ui-button ui-widget ui-corner-all settings_button"/>
+                </form>
+                {% endif %}
+            </div>
         </div>
 
 
@@ -1017,6 +1300,17 @@
         <div class="settings_block">
             <a id="advanced"></a>
             <div class="settings_block_header">Advanced</div>
+
+            <div class="settings_block_subheader">Download Debug Logs</div>
+            This will download all recent logs from your myNode. This can be helpful for debugging issues.
+            <br/>
+            It may take about one minute to gather and download the logs.
+            <br/>
+            Do not share these logs in a public place. They may contain sensitive information.
+            <br/>
+            <a href="/settings/mynode_logs.tar.gz" class="ui-button ui-widget ui-corner-all settings_button">Download Logs</a>
+
+            <div class="divider"></div>
 
             <div class="settings_block_subheader">Toggle Testnet</div>
             Testnet can be enabled for Bitcoin and Lightning, which can be used to test various features, but may cause other applications to 
@@ -1036,6 +1330,13 @@
             <br/>
             <a href="/settings/mynode_web.cert" class="ui-button ui-widget ui-corner-all settings_button">Download</a>
             <a href="/settings/regen-https-certs" class="ui-button ui-widget ui-corner-all settings_button">Regenerate</a>
+
+            <div class="divider"></div>
+
+            <div class="settings_block_subheader">SSH Keys</div>
+            This will regenerate your SSH host keys.
+            <br/>
+            <a href="/settings/regen-ssh-keys" class="ui-button ui-widget ui-corner-all settings_button">Regenerate</a>
 
             <div class="divider"></div>
 
@@ -1081,6 +1382,26 @@
             <button id="run-disk-benchmark" class="ui-button ui-widget ui-corner-all settings_button">Run Disk Benchmark</button>
             <pre id="run-disk-benchmark-results"></pre>
             
+            <div class="divider"></div>
+
+            <div class="settings_block_subheader">Enable UAS USB Driver</div>
+            This will allow the device to use the UAS USB driver, which may change performance. Only affects Raspberry Pi 4. This will reboot your device.
+            <br/><br/>
+            <label class="switch">
+                <input type="checkbox" id="uas_usb_checkbox" {% if uas_usb %}checked{% endif %}>
+                <span class="slider round"></span>
+            </label>
+            <br/><br/>
+            <button id="uas_usb_button" style="display: none;" class="ui-button ui-widget ui-corner-all settings_button_small">Save</button>
+
+            <div class="divider"></div>
+
+            <div class="settings_block_subheader">View USB Information</div>
+            View information about the current USB devices.
+            <br/>
+            <button id="view-usb-info" class="ui-button ui-widget ui-corner-all settings_button">Show USB Info</button>
+            <pre id="view-usb-info-results"></pre>
+
             <div class="divider"></div>
 
             <div class="settings_block_subheader">Remount External Drive</div>
@@ -1139,7 +1460,7 @@
                     <tr>
                         <th>Latest Beta Version</th>
                         <td>{{latest_beta_version}}</td>
-                        <td>&nbsp;<a href="/settings/get-latest-version" class="ui-button ui-widget ui-corner-all settings_button_small">Check for Updates</a></td>
+                        <td>&nbsp;<button id="check_for_updates_beta" class="ui-button ui-widget ui-corner-all settings_button_small">Check for Updates</button></td>
                     </tr>
                 </table>
                 {% if current_beta_version != latest_beta_version and latest_beta_version != "" %}
@@ -1167,6 +1488,30 @@
             </label>
             <br/><br/>
             <button id="randomize_balances_button" style="display: none;" class="ui-button ui-widget ui-corner-all settings_button_small">Save</button>
+
+            <div class="divider"></div>
+
+            <div class="settings_block_subheader">Hide Password Warning</div>
+            This hides the default password warning for taking screenshots.
+            <br/><br/>
+            <label class="switch">
+                <input type="checkbox" id="hide_password_warning_checkbox" {% if hide_password_warning %}checked{% endif %}>
+                <span class="slider round"></span>
+            </label>
+            <br/><br/>
+            <button id="hide_password_warning_button" style="display: none;" class="ui-button ui-widget ui-corner-all settings_button_small">Save</button>
+
+            <div class="divider"></div>
+
+            <div class="settings_block_subheader">Keep Bitcoin Debug Log</div>
+            The Bitcoin debug log will shrink once it reaches 10MB. This will stop shrinking the Bitcoin log.
+            <br/><br/>
+            <label class="switch">
+                <input type="checkbox" id="keep_bitcoin_debug_log_checkbox" {% if keep_bitcoin_debug_log %}checked{% endif %}>
+                <span class="slider round"></span>
+            </label>
+            <br/><br/>
+            <button id="keep_bitcoin_debug_log_button" style="display: none;" class="ui-button ui-widget ui-corner-all settings_button_small">Save</button>
 
             <div class="divider"></div>
 
@@ -1243,6 +1588,12 @@
                 <!-- Allow form submission with keyboard without duplicating the dialog button -->
                 <input type="submit" tabindex="-1" style="position:absolute; top:-1000px">
             </form>
+        </div>
+
+        <div id="loading_spinner_overlay" class="loading_spinner_overlay" style="display:none;">
+            <img id="loading_spinner" class="loading_image" src="{{ url_for('static', filename="images/loading.gif")}}"/>
+            <br/>
+            <span id="loading_spinner_message">Saving...</span>
         </div>
 
         {% include 'includes/footer.html' %}

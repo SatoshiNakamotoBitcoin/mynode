@@ -6,9 +6,8 @@
 
     <body>
         {% include 'includes/logo_header.html' %}
-        <div class="mynode_back_div">
-            <a class="ui-button ui-widget ui-corner-all mynode_back" href="/"><span class="ui-icon ui-icon-home"></span>home&nbsp;</a>
-            <a class="ui-button ui-widget ui-corner-all mynode_back" href="/lnd"><span class="ui-icon ui-icon-arrowthick-1-w"></span>back&nbsp;</a>
+        <div class="mynode_top_left_div">
+            <a href="/lnd"><img class="mynode_nav_icon" src="{{ url_for('static', filename="images/back.png")}}"/></a>
         </div>
 
         {% include 'includes/message_display.html' %}
@@ -16,7 +15,7 @@
         <div class="main_header">LND Custom Config</div>
 
         <div class="text_block">
-            You can edit the LND config. However, using your own config will prevent any future automatic updates and may have adverse effects.
+            You can edit the LND config. However, using your own config will prevent any future automatic updates and may have adverse effects. Many other settings will have no effect.
             <br/><br/>
             Saving will reboot your device.
             <br/>
